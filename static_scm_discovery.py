@@ -1,11 +1,11 @@
 from collections import defaultdict
-# import logging
 import json
 import os
 import pickle
 from pprint import pformat
 import sys
 from typing import Tuple
+from typing import Iterable
 
 from absl import app
 from absl import flags
@@ -15,7 +15,10 @@ import pandas as pd
 import scipy
 from sklearn import metrics
 import torch
-from structured_transitions import gen_samples_static, TransitionsData, MaskedNetwork
+
+from structured_transitions import gen_samples_static
+from structured_transitions import MaskedNetwork
+from structured_transitions import TransitionsData
 
 Array = np.ndarray
 
@@ -29,11 +32,11 @@ def model_sparsity(model: MaskedNetwork, threshold: float) -> Array:
 
 
 def precision_recall(
-    model: MaskedNetwork, threshold: float
+    model: MaskedNetwork, threshold: float, splits: Iterable
 ) -> Tuple[float, float]:
   predicted_sparsity = model_sparsity(model, threshold)
   ground_truth_sparsity = scipy.linalg.block_diag(*(
-        np.ones((split, split), dtype=np.int_) for split in FLAGS.splits
+        np.ones((split, split), dtype=np.int_) for split in splits
   ))
   precision = metrics.precision_score(
       ground_truth_sparsity.ravel(),
@@ -81,6 +84,7 @@ def main(argv):
   for run in range(FLAGS.num_runs):
     np.random.seed(FLAGS.seed + run)
 
+    # create observational data
     fns, samples = gen_samples_static(
       num_seqs=FLAGS.num_seqs, seq_len=FLAGS.seq_len, splits=FLAGS.splits)
     dataset = TransitionsData(samples)
@@ -94,6 +98,7 @@ def main(argv):
       te, batch_size=FLAGS.batch_size, shuffle=False, num_workers=2,
       drop_last=True)
 
+    # build model and optimizer
     model = MaskedNetwork(in_features=sum(FLAGS.splits),
                           out_features=sum(FLAGS.splits),
                           num_hidden_layers=2, num_hidden_units=256).to(dev)
@@ -102,6 +107,7 @@ def main(argv):
     pred_criterion = torch.nn.MSELoss()
     mask_criterion = torch.nn.L1Loss()
 
+    # train
     for epoch in range(FLAGS.num_epochs):
       total_pred_loss, total_mask_loss = 0., 0.
       for i, (x, y) in enumerate(train_loader):
@@ -125,8 +131,9 @@ def main(argv):
           .format(run, epoch, total_pred_loss / i, total_mask_loss / i)
         )
 
+    # eval
     for tau in TAUS:
-      precision, recall = precision_recall(model, tau)
+      precision, recall = precision_recall(model, tau, FLAGS.splits)
       results['precision'][tau].append(precision)
       results['recall'][tau].append(recall)
 
@@ -134,7 +141,6 @@ def main(argv):
 
   # format results as tex via pandas
   results_df = pd.DataFrame.from_dict(results)
-  # results_df.index.name = r'$\tau$'
 
   def format_mean_and_std(result):
     return '$%.2f \pm %.2f$' % (np.mean(result), np.std(result))
@@ -163,7 +169,6 @@ def main(argv):
     pickle.dump(results, f)
 
   logging.info('done')
-
 
 
 if __name__ == "__main__":
