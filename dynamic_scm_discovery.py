@@ -21,6 +21,7 @@ from structured_transitions import TransitionsData
 
 Array = np.ndarray
 Tensor = torch.Tensor
+DataLoader = torch.utils.data.DataLoader
 
 
 def local_model_sparsity(
@@ -35,6 +36,36 @@ def local_model_sparsity(
                        torch.zeros_like(mask))
     predicted_sparsity = mask
     return predicted_sparsity, ground_truth_sparsity
+
+
+def plot_roc(
+    model: MixtureOfMaskedNetworks, loader: DataLoader
+):
+  import matplotlib
+  matplotlib.use('Agg')
+  from matplotlib import pyplot as plt
+  scores = []
+  labels = []
+  for x, _, m_tru in loader:
+    _, m_hat, _ = model.forward_with_mask(x)
+    scores.append(m_hat.detach().numpy().ravel())
+    labels.append(m_tru.detach().numpy().ravel())
+  scores = np.hstack(scores)
+  labels = np.hstack(labels)
+  fpr, tpr, thresh = metrics.roc_curve(labels, scores)
+  auc = metrics.auc(fpr, tpr)
+  plt.figure()
+  lw = 2
+  plt.plot(fpr, tpr, color='darkorange',
+           lw=lw, label='ROC curve (area = %0.2f)' % auc)
+  plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+  plt.xlim([0.0, 1.0])
+  plt.ylim([0.0, 1.05])
+  plt.xlabel('False Positive Rate')
+  plt.ylabel('True Positive Rate')
+  plt.title('Receiver operating characteristic example')
+  plt.legend(loc="lower right")
+  plt.savefig(os.path.join(FLAGS.results_dir, 'roc.pdf'))
 
 
 def main(argv):
@@ -60,7 +91,8 @@ def main(argv):
   logging.get_absl_handler().use_absl_log_file('dynamic_scm_discovery',
                                                FLAGS.results_dir)
 
-  TAUS = np.linspace(0., .15, 4)  # tresholds to sweep when computing metrics
+  # TAUS = np.linspace(0., .5, 11)  # tresholds to sweep when computing metrics
+  TAUS = np.linspace(0., .25, 6)  # tresholds to sweep when computing metrics
 
   results = dict(
     precision=defaultdict(list), recall=defaultdict(list)
@@ -187,6 +219,9 @@ def main(argv):
     column_format='|r|l|l|'
   )
   logging.info('tex table:\n' + results_tex)
+
+  # plot ROC
+  plot_roc(model, test_loader)
 
   # save results (in various formats) to disk
   results.update(taus=TAUS.tolist())  # don't do this before pd.DataFrame init
