@@ -23,13 +23,14 @@ Array = np.ndarray
 Tensor = torch.Tensor
 DataLoader = torch.utils.data.DataLoader
 
+DEV = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def local_model_sparsity(
       model: MixtureOfMaskedNetworks, threshold: float, batch: Tuple[Tensor]
     ) -> Tuple[list, list]:
     x, _, ground_truth_sparsity = batch
     assert isinstance(model, MixtureOfMaskedNetworks), 'bad model'
-    _, mask, _ = model.forward_with_mask(x)
+    _, mask, _ = model.forward_with_mask(x.to(DEV))
     mask[mask < threshold] = 0
     mask = torch.where(mask > threshold,
                        torch.ones_like(mask),
@@ -39,7 +40,7 @@ def local_model_sparsity(
 
 
 def plot_roc(
-    model: MixtureOfMaskedNetworks, loader: DataLoader
+    model: MixtureOfMaskedNetworks, loader: DataLoader, seed : int = 0
 ):
   import matplotlib
   matplotlib.use('Agg')
@@ -47,9 +48,9 @@ def plot_roc(
   scores = []
   labels = []
   for x, _, m_tru in loader:
-    _, m_hat, _ = model.forward_with_mask(x)
-    scores.append(m_hat.detach().numpy().ravel())
-    labels.append(m_tru.detach().numpy().ravel())
+    _, m_hat, _ = model.forward_with_mask(x.to(DEV))
+    scores.append(m_hat.detach().cpu().numpy().ravel())
+    labels.append(m_tru.detach().cpu().numpy().ravel())
   scores = np.hstack(scores)
   labels = np.hstack(labels)
   fpr, tpr, thresh = metrics.roc_curve(labels, scores)
@@ -65,7 +66,7 @@ def plot_roc(
   plt.ylabel('True Positive Rate')
   plt.title('Receiver operating characteristic example')
   plt.legend(loc="lower right")
-  plt.savefig(os.path.join(FLAGS.results_dir, 'roc.pdf'))
+  plt.savefig(os.path.join(FLAGS.results_dir, 'roc_{}.pdf'.format(seed)))
 
 
 def main(argv):
@@ -92,7 +93,7 @@ def main(argv):
                                                FLAGS.results_dir)
 
   # TAUS = np.linspace(0., .5, 11)  # tresholds to sweep when computing metrics
-  TAUS = np.linspace(0., .25, 6)  # tresholds to sweep when computing metrics
+  TAUS = np.linspace(0., .25, 11)  # tresholds to sweep when computing metrics
 
   results = dict(
     precision=defaultdict(list), recall=defaultdict(list)
@@ -102,7 +103,8 @@ def main(argv):
   FLAGS.splits = [int(split) for split in FLAGS.splits]
 
   for run in range(FLAGS.num_runs):
-    np.random.seed(FLAGS.seed + run)
+    seed = FLAGS.seed + run
+    np.random.seed(seed)
 
     # create observational data
     global_interactions, fns, samples = gen_samples_dynamic(
@@ -175,8 +177,8 @@ def main(argv):
         )
         ground_truth_sparsity.append(ground_truth_sparsity_)
         predicted_sparsity.append(predicted_sparsity_)
-      ground_truth_sparsity = torch.cat(ground_truth_sparsity).numpy()
-      predicted_sparsity = torch.cat(predicted_sparsity).numpy()
+      ground_truth_sparsity = torch.cat(ground_truth_sparsity).cpu().numpy()
+      predicted_sparsity = torch.cat(predicted_sparsity).cpu().numpy()
       results['precision'][tau].append(
         metrics.precision_score(
             ground_truth_sparsity.ravel(),
@@ -190,6 +192,9 @@ def main(argv):
         )
       )
 
+
+    # plot ROC
+    plot_roc(model, test_loader, seed)
 
     # # best-case eval w.r.t. the splits hyperparams (not dynamic)
     # for tau in TAUS:
@@ -220,9 +225,6 @@ def main(argv):
   )
   logging.info('tex table:\n' + results_tex)
 
-  # plot ROC
-  plot_roc(model, test_loader)
-
   # save results (in various formats) to disk
   results.update(taus=TAUS.tolist())  # don't do this before pd.DataFrame init
   with open(os.path.join(FLAGS.results_dir, 'results.txt'), 'w') as f:
@@ -250,10 +252,10 @@ if __name__ == "__main__":
   flags.DEFINE_float('weight_decay', 1e-5, 'Weight decay.')
   flags.DEFINE_integer('num_seqs', 1500, 'Number of sequences.')
   flags.DEFINE_integer('seq_len', 10, 'Length of each sequence.')
-  flags.DEFINE_integer('num_runs', 5, 'Number of times to run the experiment.')
+  flags.DEFINE_integer('num_runs', 10, 'Number of times to run the experiment.')
   flags.DEFINE_integer('seed', 1, 'Random seed.')
   flags.DEFINE_integer('num_epochs', 250, 'Number of epochs of training.')
-  flags.DEFINE_list('splits', [4, 3, 2], 'Dimensions per state factor.')
+  flags.DEFINE_list('splits', [3, 3, 3], 'Dimensions per state factor.')
   flags.DEFINE_boolean('verbose', False, 'If True, prints log info to std out.')
   flags.DEFINE_float('epsilon', 1.5, 'Sparse/dense threshold per factor in MP.')
   flags.DEFINE_string(
