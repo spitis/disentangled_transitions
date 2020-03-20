@@ -4,12 +4,14 @@ import os
 import pickle
 from pprint import pformat
 import sys
+from typing import Tuple
 
 from absl import app
 from absl import flags
 from absl import logging
 import numpy as np
 import pandas as pd
+from sklearn import metrics
 import torch
 
 from static_scm_discovery import precision_recall
@@ -17,33 +19,22 @@ from structured_transitions import gen_samples_dynamic
 from structured_transitions import MixtureOfMaskedNetworks
 from structured_transitions import TransitionsData
 
+Array = np.ndarray
+Tensor = torch.Tensor
 
-# def model_sparsity(model: MixtureOfMaskedNetworks, threshold: float) -> Array:
-#     assert isinstance(model, MixtureOfMaskedNetworks), 'bad model'
-#     mask = model.mask.detach().cpu().numpy()
-#     mask[mask < threshold] = 0
-#     mask = (mask > 0).astype(np.int_)
-#     # TODO(creager): fix me
-#     return mask
-#
-#
-# def precision_recall(
-#     model: MixtureOfMaskedNetworks, threshold: float
-# ) -> Tuple[float, float]:
-#   predicted_sparsity = model_sparsity(model, threshold)
-#   ground_truth_sparsity = scipy.linalg.block_diag(*(
-#         np.ones((split, split), dtype=np.int_) for split in FLAGS.splits
-#   ))
-#   precision = metrics.precision_score(
-#       ground_truth_sparsity.ravel(),
-#       predicted_sparsity.ravel()
-#   )
-#   recall = metrics.recall_score(
-#       ground_truth_sparsity.ravel(),
-#       predicted_sparsity.ravel()
-#   )
-#   # TODO(creager): fix me
-#   return precision, recall
+
+def local_model_sparsity(
+      model: MixtureOfMaskedNetworks, threshold: float, batch: Tuple[Tensor]
+    ) -> Tuple[list, list]:
+    x, _, ground_truth_sparsity = batch
+    assert isinstance(model, MixtureOfMaskedNetworks), 'bad model'
+    _, mask, _ = model.forward_with_mask(x)
+    mask[mask < threshold] = 0
+    mask = torch.where(mask > threshold,
+                       torch.ones_like(mask),
+                       torch.zeros_like(mask))
+    predicted_sparsity = mask
+    return predicted_sparsity, ground_truth_sparsity
 
 
 def main(argv):
@@ -115,7 +106,7 @@ def main(argv):
     for epoch in range(FLAGS.num_epochs):
       total_pred_loss, total_mask_loss, total_weight_loss, total_attn_loss = \
         (0., 0., 0., 0.)
-      for i, (x, y) in enumerate(train_loader):
+      for i, (x, y, _) in enumerate(train_loader):
         pred_y, mask, attn = model.forward_with_mask(x.to(dev))
         pred_loss = pred_criterion(y.to(dev), pred_y)
         mask_loss = FLAGS.mask_reg * mask_criterion(
@@ -142,18 +133,43 @@ def main(argv):
           .format(run, epoch, total_pred_loss / i, total_mask_loss / i,
                  total_attn_loss / i, total_weight_loss / i))
 
-    # eval
+    # worst-case eval w.r.t. actual dynamic masks
     for tau in TAUS:
-      # NOTE: we measure whether _any_ component uncovers the local transitions
-      # TODO(): add a metric that takes the attention mechanism into account
-      best_precision, best_recall = 0., 0.
-      for component in model.components:  # best-case result across components
-        precision, recall = precision_recall(component, tau, FLAGS.splits)
-        if np.mean((precision, recall)) > np.mean((best_precision,
-                                                   best_recall)):
-          best_precision, best_recall = precision, recall
-      results['precision'][tau].append(best_precision)
-      results['recall'][tau].append(best_recall)
+      ground_truth_sparsity = []  # per step
+      predicted_sparsity = []  # per step
+      for batch in test_loader:
+        predicted_sparsity_, ground_truth_sparsity_ = local_model_sparsity(
+          model, tau, batch
+        )
+        ground_truth_sparsity.append(ground_truth_sparsity_)
+        predicted_sparsity.append(predicted_sparsity_)
+      ground_truth_sparsity = torch.cat(ground_truth_sparsity).numpy()
+      predicted_sparsity = torch.cat(predicted_sparsity).numpy()
+      results['precision'][tau].append(
+        metrics.precision_score(
+            ground_truth_sparsity.ravel(),
+            predicted_sparsity.ravel()
+        )
+      )
+      results['recall'][tau].append(
+        metrics.recall_score(
+            ground_truth_sparsity.ravel(),
+            predicted_sparsity.ravel()
+        )
+      )
+
+
+    # # best-case eval w.r.t. the splits hyperparams (not dynamic)
+    # for tau in TAUS:
+    #   # NOTE: we measure whether _any_ component uncovers the local transitions
+    #   best_precision, best_recall = 0., 0.
+    #   for component in model.components:  # best-case result across components
+    #     precision, recall = precision_recall(component, tau, FLAGS.splits)
+    #     if np.mean((precision, recall)) > np.mean((best_precision,
+    #                                                best_recall)):
+    #       best_precision, best_recall = precision, recall
+    #   results['precision'][tau].append(best_precision)
+    #   results['recall'][tau].append(best_recall)
 
   logging.info('results:\n' + pformat(results, indent=2))
 

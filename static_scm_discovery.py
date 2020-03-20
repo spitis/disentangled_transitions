@@ -110,7 +110,7 @@ def main(argv):
     # train
     for epoch in range(FLAGS.num_epochs):
       total_pred_loss, total_mask_loss = 0., 0.
-      for i, (x, y) in enumerate(train_loader):
+      for i, (x, y, _) in enumerate(train_loader):
         pred_y = model(x.to(dev))
         pred_loss = pred_criterion(y.to(dev), pred_y)
         mask = model.mask

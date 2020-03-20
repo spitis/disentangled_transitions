@@ -1,4 +1,5 @@
 import numpy as np
+import scipy
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -100,7 +101,20 @@ def gen_samples_static(num_seqs=16, seq_len=12, splits=[5, 3, 2]):
     next_factors = [fn(f) for f, fn in zip(factors, fns)]
     seq.append(torch.cat(next_factors, 1))
 
-  return fns, (torch.cat(seq[:-1]), torch.cat(seq[1:]))
+  # Build ground truth masks for each transition in the dataset (all the same).
+  ground_truth_sparsity = scipy.linalg.block_diag(*(
+    np.ones((split, split), dtype=np.int_) for split in splits
+  ))
+  ground_truth_sparsity = torch.tensor(ground_truth_sparsity)
+  sparsity_per_transition = ground_truth_sparsity.repeat(
+    num_seqs * seq_len, 1, 1)
+
+  transition_start = torch.cat(seq[:-1])
+  transition_end = torch.cat(seq[1:])
+
+  samples = (transition_start, transition_end, sparsity_per_transition)
+
+  return fns, samples
 
 
 def gen_samples_dynamic(num_seqs=16, seq_len=12, splits=[5, 3, 2], epsilon=2.):
@@ -120,24 +134,56 @@ def gen_samples_dynamic(num_seqs=16, seq_len=12, splits=[5, 3, 2], epsilon=2.):
     fns.append(Randfn(split, split))
     global_fns.append(Randfn(split, sum(splits)))
 
+  # the "baseline" is no global connectivity
+  baseline_ground_truth_sparsity = scipy.linalg.block_diag(*(
+    np.ones((split, split), dtype=np.int_) for split in splits
+  ))
+  baseline_ground_truth_sparsity = torch.tensor(baseline_ground_truth_sparsity)
+  # local_sparsity = [baseline_ground_truth_sparsity.repeat(num_seqs, 1, 1)]
+  local_sparsity = []
+  fan_outs = []
+  for start, end in zip(
+    np.cumsum(splits) - splits[0],
+    np.cumsum(splits)
+  ):
+    fan_out = np.zeros((sum(splits), sum(splits)))
+    fan_out[:, start:end] = 1
+    fan_out = torch.tensor(fan_out, dtype=torch.float32)
+    fan_outs.append(fan_out)
+  batched_fan_outs = [
+    fo.repeat(num_seqs, 1, 1) for fo in fan_outs
+  ]
+
   for i in range(seq_len):
     factors = seq[-1].split(splits, dim=1)
     next_factors = [fn(f / f.norm(dim=-1).view(-1, 1)) for f, fn in zip(factors, fns)]
     seq.append(torch.cat(next_factors, 1))
+    local_sparsity.append(
+      baseline_ground_truth_sparsity.repeat(num_seqs, 1, 1)
+    )
 
-    for f, gfn in zip(factors, global_fns):
+    for f, gfn, bfo in zip(factors, global_fns, batched_fan_outs):
       mask = (f.norm(dim=-1) > epsilon).to(torch.float32).view(-1, 1)
       total_global_interactions += mask.sum()
       seq[-1] = seq[-1] + gfn(f / f.norm(dim=-1).view(-1, 1)) * mask
+      # add local dynamics
+      local_sparsity[-1] = local_sparsity[-1] + bfo * mask.view(-1, 1, 1)
+    # binarize local dynamics
+    local_sparsity[-1] = torch.where(local_sparsity[-1] > 0,
+                                     torch.ones_like(local_sparsity[-1]),
+                                     torch.zeros_like(local_sparsity[-1])
+                                     )
 
-  return total_global_interactions, fns, (torch.cat(seq[:-1]), torch.cat(seq[1:]))
+  samples = (torch.cat(seq[:-1]), torch.cat(seq[1:]), torch.cat(local_sparsity))
+  return total_global_interactions, fns, samples
 
 
 class TransitionsData(torch.utils.data.Dataset):
   def __init__(self, samples):
-    x, y = samples
+    x, y, m = samples
     self.x = x.detach()
     self.y = y.detach()
+    self.m = m.detach()
 
   def __len__(self):
     return len(self.x)
@@ -147,4 +193,5 @@ class TransitionsData(torch.utils.data.Dataset):
       idx = idx.tolist()
     x = self.x[idx]
     y = self.y[idx]
-    return x, y
+    m = self.m[idx]
+    return x, y, m
