@@ -39,12 +39,10 @@ def local_model_sparsity(
     return predicted_sparsity, ground_truth_sparsity
 
 
-def plot_roc(
-    model: MixtureOfMaskedNetworks, loader: DataLoader, seed : int = 0
+def compute_metrics(
+    model: MixtureOfMaskedNetworks, loader: DataLoader, seed: int = 0
 ):
-  import matplotlib
-  matplotlib.use('Agg')
-  from matplotlib import pyplot as plt
+  model.eval()
   scores = []
   labels = []
   for x, _, m_tru in loader:
@@ -55,6 +53,18 @@ def plot_roc(
   labels = np.hstack(labels)
   fpr, tpr, thresh = metrics.roc_curve(labels, scores)
   auc = metrics.auc(fpr, tpr)
+  return fpr, tpr, thresh, auc
+
+
+def plot_roc(
+    model: MixtureOfMaskedNetworks, loader: DataLoader, seed: int = 0
+):
+  fpr, tpr, thresh, auc = compute_metrics(model, loader)
+
+  import matplotlib
+  matplotlib.use('Agg')
+  from matplotlib import pyplot as plt
+
   plt.figure()
   lw = 2
   plt.plot(fpr, tpr, color='darkorange',
@@ -64,9 +74,37 @@ def plot_roc(
   plt.ylim([0.0, 1.05])
   plt.xlabel('False Positive Rate')
   plt.ylabel('True Positive Rate')
-  plt.title('Receiver operating characteristic example')
+  plt.title('ROC For Ground Truth Sparsity Recovery')
   plt.legend(loc="lower right")
   plt.savefig(os.path.join(FLAGS.results_dir, 'roc_{}.pdf'.format(seed)))
+
+
+def plot_metrics(train_losses: list, train_aucs: list,
+                 valid_losses: list, valid_aucs: list,
+                 seed: int):
+  import matplotlib
+  matplotlib.use('Agg')
+  from matplotlib import pyplot as plt
+
+  # TODO(creager): proper x-axis: multiply ticks by 25
+
+  fig, ax = plt.subplots(2, figsize=(8, 6))
+  ax[0].plot(train_losses, linestyle='-', c='gray', label='Train loss')
+  ax[1].plot(train_aucs, linestyle='-', c='blue', label='Train AUC')
+
+  # plt.ylim(0.0003, 0.0015)
+  ax[0].plot(valid_losses, linestyle='--', c='gray', label='Valid loss')
+  ax[1].plot(valid_aucs, linestyle='--', c='blue', label='Valid AUC')
+
+  ax[0].set_ylabel('Task loss', size=16)
+  ax[1].set_ylabel('Attention AUC', size=16)
+  for ax_ in ax:
+    ax_.set_xlabel('Epochs', size=16)
+    ax_.legend()
+  plt.suptitle('Learning metrics', size=16)
+  plt.tight_layout()
+  plt.savefig(os.path.join(FLAGS.results_dir, 'train_metrics_{}.pdf'.format(
+    seed)))
 
 
 def main(argv):
@@ -103,6 +141,8 @@ def main(argv):
   FLAGS.splits = [int(split) for split in FLAGS.splits]
 
   for run in range(FLAGS.num_runs):
+    auc_tr, auc_va = [], []
+    losses_tr, losses_va = [], []
     seed = FLAGS.seed + run
     np.random.seed(seed)
 
@@ -122,6 +162,7 @@ def main(argv):
     test_loader = torch.utils.data.DataLoader(te, batch_size=FLAGS.batch_size,
                                               shuffle=False, num_workers=2,
                                               drop_last=True)
+    valid_loader = test_loader  # TODO(creager): don't do this
 
     # build model and optimizer
     model = MixtureOfMaskedNetworks(in_features=sum(FLAGS.splits),
@@ -138,6 +179,7 @@ def main(argv):
     # train
 
     for epoch in range(FLAGS.num_epochs):
+      model.train()
       total_pred_loss, total_mask_loss, total_weight_loss, total_attn_loss = \
         (0., 0., 0., 0.)
       for i, (x, y, _) in enumerate(train_loader):
@@ -166,6 +208,35 @@ def main(argv):
           'Run {}, Ep. {}. Pred: {:.5f}, Mask: {:.5f}, Attn: {:.5f}, Wt: {:.5f}'
           .format(run, epoch, total_pred_loss / i, total_mask_loss / i,
                  total_attn_loss / i, total_weight_loss / i))
+        train_metrics = compute_metrics(model, train_loader)
+        auc_tr.append(train_metrics[-1])
+        valid_metrics = compute_metrics(model, valid_loader)
+        auc_va.append(valid_metrics[-1])
+        losses_tr.append(loss.detach().item())
+        # compute validation loss
+        model.eval()
+        valid_loss = 0.
+        for i, (x, y, _) in enumerate(valid_loader):
+          pred_y, mask, attn = model.forward_with_mask(x.to(dev))
+          pred_loss = pred_criterion(y.to(dev), pred_y)
+          mask_loss = FLAGS.mask_reg * mask_criterion(
+            torch.log(1. + mask), torch.zeros_like(mask))
+          attn_loss = FLAGS.attn_reg * torch.sqrt(attn).mean()
+
+          weight_loss = 0
+          for param in model.parameters():
+            weight_loss += mask_criterion(param, torch.zeros_like(param))
+          weight_loss *= FLAGS.weight_reg
+
+          total_pred_loss += pred_loss
+          total_mask_loss += mask_loss
+          total_attn_loss += attn_loss
+          total_weight_loss += weight_loss
+
+          valid_loss += pred_loss + mask_loss + attn_loss + weight_loss
+        valid_loss /= len(valid_loader)
+        losses_va.append(valid_loss.detach().item())
+
 
     # worst-case eval w.r.t. actual dynamic masks
     for tau in TAUS:
@@ -192,6 +263,8 @@ def main(argv):
         )
       )
 
+    # plot train metrics
+    plot_metrics(losses_tr, auc_tr, losses_va, auc_va, seed)
 
     # plot ROC
     plot_roc(model, test_loader, seed)
