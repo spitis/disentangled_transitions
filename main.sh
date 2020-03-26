@@ -15,7 +15,9 @@ time python coda_forward_model.py \
   --num_sprites 4 \
   --imagedim 20 \
   --seed 0 \
-  --num_epochs 5 \
-  --num_pairs 100 \
-  --max_episode_length 1000 \
+  --num_epochs 100 \
+  --num_pairs 500 \
+  --max_episode_length 5000 \
+  --weight_decay 0. \
+  --results_dir /scratch/gobi1/creager/disentangled_transitions/coda_forward_model
 

@@ -193,7 +193,11 @@ if __name__ == "__main__":
 
   # set log file
   logging.basicConfig(filename=os.path.join(FLAGS.results_dir, 'main.log'),
-                      level=logging.DEBUG)
+                      level=logging.INFO)
+  # log to std err
+  console = logging.StreamHandler()
+  console.setLevel(logging.INFO)
+  logging.getLogger('').addHandler(console)
 
   # set random seed
   np.random.seed(FLAGS.seed)
@@ -480,8 +484,8 @@ if __name__ == "__main__":
                         FLAGS.relabel_samples_per_pair, flattened=True,
                         custom_get_mask=get_true_flat_mask)
 
-  logging.info(' '.join(1, len(res)))
-  logging.info(' '.join(2, res[:1])) # each is s1, a, r, s2
+  logging.info(len(res))
+  logging.info(res[:1]) # each is s1, a, r, s2
 
   class StateActionStateRelabeledDataset(torch.utils.data.Dataset):
     """Relabels the data up front using relabel_strategy"""
@@ -552,15 +556,22 @@ if __name__ == "__main__":
   with open(os.path.join(FLAGS.results_dir, 'forward_model.pkl'), 'wb') as f:
     pickle.dump((tr_none, tr_true, tr_rand, te), f)
 
-  logging.info(' '.join(len(tr_none), len(tr_true), len(tr_rand)))
+  logging.info('%d, %d, %d' % (len(tr_none), len(tr_true), len(tr_rand)))
 
-  for tr in [tr_none, tr_true, tr_rand]:
+  for name, tr in zip(
+      ('none', 'true', 'rand'),
+      (tr_none, tr_true, tr_rand)
+  ):
     lst = [tr[i][0].numpy().round(2) for i in range(len(tr_none))]
     s = set([tuple(a) for a in lst])
-    logging.info("Number of unique (s1, a) pairs in dataset: {}".format(len(s)))
+    logging.info("Number of unique (s1, a) pairs in dataset {}: {}".format(
+      name, len(s)))
 
+  logging.info('training mask network from data with no relabeling')
   tr_loss_none, te_loss_none = train_fwd_model(tr_none, te)
+  logging.info('training mask network from data with random relabeling')
   tr_loss_rand, te_loss_rand = train_fwd_model(tr_rand, te)
+  logging.info('training mask network from data with ground truth relabeling')
   tr_loss_true, te_loss_true = train_fwd_model(tr_true, te)
 
   plot_losses(tr_loss_none, te_loss_none,
