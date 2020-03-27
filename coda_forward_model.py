@@ -8,7 +8,6 @@ import os
 import pickle
 import sys
 
-import matplotlib.pyplot as plt
 import multiprocessing as mp
 import numpy as np
 from scipy.sparse.csgraph import connected_components
@@ -16,10 +15,36 @@ from spriteworld import environment, renderers, tasks, action_spaces
 from spriteworld import factor_distributions as distribs
 from spriteworld import sprite_generators
 from spriteworld import gym_wrapper as gymw
-from matplotlib import animation
 import torch
 
 from structured_transitions import MaskedNetwork
+from utils import anim
+
+
+def create_factorized_dataset(env, num_transitions=20000, reset_prob=0.05,
+                              print_every=1000):
+  data = []
+  sprites = []
+  s1 = env.reset()
+  sprites1 = copy.deepcopy(env._env.state()['sprites'])
+  i = 1
+  while len(data) < num_transitions:
+    i += 1
+    if i % print_every == 0:
+      print('.', end='', flush=True)
+    a = env.action_space.sample()
+    s2, r, _, _ = env.step(a)
+
+    data.append((s1['disentangled'], a, r, s2['disentangled']))
+    sprites.append(sprites1)
+
+    s1 = s2
+    sprites1 = copy.deepcopy(env._env.state()['sprites'])
+
+    if np.random.random() < reset_prob:
+      s1 = env.reset()
+      sprites1 = copy.deepcopy(env._env.state()['sprites'])
+  return data, sprites
 
 
 def plot_losses(tr_loss_none, te_loss_none,
@@ -98,35 +123,6 @@ def train_fwd_model(tr, te):
   return tr_losses, te_losses
 
 
-def viz(obs, filename='./viz.pdf'):
-  plt.figure(figsize=(2, 2))
-  plt.imshow(255 - obs)
-  plt.savefig(filename)
-
-
-def anim(env, T=100):
-  fig = plt.figure(figsize=(2, 2))
-
-  states = [255 - env.reset()['image']]
-
-  for i in range(T):
-    a = env.action_space.sample()
-    state, _, _, _ = env.step(a)
-    states.append(255 - state['image'])
-
-  im = plt.imshow(states[0], cmap=plt.get_cmap('jet'), vmin=0, vmax=255)
-
-  def updatefig(j):
-    im.set_array(states[j])
-    return [im]
-
-  ani = animation.FuncAnimation(fig, updatefig, frames=T, interval=75,
-                                repeat_delay=1000)
-  # Set up formatting for the movie files
-  Writer = animation.writers['ffmpeg']
-  writer = Writer(fps=15, metadata=dict(artist='Me'), bitrate=1800)
-  ani.save(os.path.join(FLAGS.results_dir, 'env.mp4'), writer=writer)
-  return ani.to_html5_video()
 
 
 if __name__ == "__main__":
@@ -257,35 +253,11 @@ if __name__ == "__main__":
   env = environment.Environment(**config)
   env = gymw.GymWrapper(env)
 
-  res = anim(env, 200)
+  res = anim(env, 200, filename=os.path.join(FLAGS.results_dir, 'env.mp4'))
 
-  def create_factorized_dataset(num_transitions=20000, reset_prob=0.05,
-                                print_every=1000):
-    data = []
-    sprites = []
-    s1 = env.reset()
-    sprites1 = copy.deepcopy(env._env.state()['sprites'])
-    i = 1
-    while len(data) < num_transitions:
-      i += 1
-      if i % print_every == 0:
-        print('.', end='', flush=True)
-      a = env.action_space.sample()
-      s2, r, _, _ = env.step(a)
 
-      data.append((s1['disentangled'], a, r, s2['disentangled']))
-      sprites.append(sprites1)
-
-      s1 = s2
-      sprites1 = copy.deepcopy(env._env.state()['sprites'])
-
-      if np.random.random() < reset_prob:
-        s1 = env.reset()
-        sprites1 = copy.deepcopy(env._env.state()['sprites'])
-    return data, sprites
-
-  data, sprites = create_factorized_dataset(2000)
-  test_data, test_sprites = create_factorized_dataset(5000)
+  data, sprites = create_factorized_dataset(env, 2000)
+  test_data, test_sprites = create_factorized_dataset(env, 5000)
 
   def powerset(n):
     xs = list(range(n))
