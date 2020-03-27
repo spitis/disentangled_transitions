@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 
+from colour import Color
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from spriteworld import environment, renderers, tasks, action_spaces
@@ -175,9 +176,15 @@ if __name__ == "__main__":
   # Below line forces fixed colors (bad for generalization, but presumably
   # easier to learn from images)
 
+  # fix colors
+  gradient_colors = list(Color("red").range_to(Color("blue"),
+                                               FLAGS.num_sprites))
+  gradient_colors = [
+    tuple((np.array(gradient_color.get_rgb()) * 255).astype(np.int_))
+    for gradient_color in gradient_colors
+  ]
   sprite_gen = sprite_generators.fix_colors(sprite_gen,
-                                            [(250, 125, 0), (0, 255, 125),
-                                             (125, 0, 255), (255, 255, 255)])
+                                            gradient_colors)
 
   random_mtx = (np.random.rand(100, 100) - 0.5) * 2.
   fn = lambda a: np.dot(random_mtx[:len(a), :len(a)], a)
