@@ -114,6 +114,10 @@ if __name__ == "__main__":
                       type=int,
                       default=500,
                       help='Number of examples in dynamics model training set.')
+  parser.add_argument('--num_frames',
+                      type=int,
+                      default=200,
+                      help='Number of frames in sampled rollouts videos.')
   parser.add_argument('--seed',
                       type=int,
                       default=1,
@@ -217,8 +221,9 @@ if __name__ == "__main__":
   env = gymw.GymWrapper(env)
 
   # write movie of actual environment rollouts
-  res = anim(env, 200, filename=os.path.join(FLAGS.results_dir,
-                                             'ground_truth.mp4'))
+  plot_kwargs = dict(show_resets=True, show_clicks=True)
+  res = anim(env, FLAGS.num_frames, filename=os.path.join(FLAGS.results_dir,
+                                             'ground_truth.mp4'), **plot_kwargs)
 
   # sample dataset from environment
   data, sprites = create_factorized_dataset(env, FLAGS.num_examples)
@@ -241,7 +246,8 @@ if __name__ == "__main__":
   env2 = gymw.GymWrapper(env2)
 
   # write movie of model-based rollouts
-  res2 = anim(env2, 200, filename=os.path.join(FLAGS.results_dir,
-                                               'model_based.mp4'))
+  res2 = anim(env2, FLAGS.num_frames, filename=os.path.join(FLAGS.results_dir,
+                                               'model_based.mp4'),
+              **plot_kwargs)
 
   logging.info('done')
