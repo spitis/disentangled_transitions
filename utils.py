@@ -68,10 +68,13 @@ def anim(env, T=100, filename='/tmp/anim.mp4',
 
     return [im]
 
+  print('animating')
   ani = animation.FuncAnimation(fig, updatefig, frames=T, interval=75,
                                 repeat_delay=1000)
   # Set up formatting for the movie files
   Writer = animation.writers['ffmpeg']
   writer = Writer(fps=FPS, metadata=dict(artist='Me'), bitrate=1800)
   ani.save(filename, writer=writer)
-  return ani.to_html5_video()
+  print('done')  # flush line
+  # return ani.to_html5_video()
+  return

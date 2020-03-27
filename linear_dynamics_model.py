@@ -61,11 +61,25 @@ class StateActionTestDataset(torch.utils.data.Dataset):
     return torch.cat((s1, a), 0), s2
 
 
-class ModelBasedSelectBounce(action_spaces.SelectBounce):
-  """Swaps spriteworld environment dynamics with regressor learned from data."""
-  def __init__(self, dataset, noise_scale=0.01, prevent_intersect=0.1):
-    super(ModelBasedSelectBounce, self).__init__(
+class SeededSelectBounce(action_spaces.SelectBounce):
+  def __init__(self, seed=None, noise_scale=0.01, prevent_intersect=0.1):
+    super(SeededSelectBounce, self).__init__(
       noise_scale=noise_scale, prevent_intersect=prevent_intersect)
+    self.seed(seed)
+
+  def seed(self, seed=None):
+    np.random.seed(seed)
+
+
+class ModelBasedSelectBounce(SeededSelectBounce):
+  """Swaps spriteworld environment dynamics with regressor learned from data."""
+  def __init__(self, dataset, seed=None, noise_scale=0.01,
+               prevent_intersect=0.1):
+    super(ModelBasedSelectBounce, self).__init__(
+      seed=seed,
+      noise_scale=noise_scale,
+      prevent_intersect=prevent_intersect
+    )
     # fit model
     data = dataset.data
     X = np.vstack(
@@ -155,9 +169,6 @@ if __name__ == "__main__":
   console.setLevel(logging.INFO)
   logging.getLogger('').addHandler(console)
 
-  # set random seed
-  np.random.seed(FLAGS.seed)
-
   # build factors
   factors = distribs.Product([
     distribs.Continuous('x', 0.05, 0.95),
@@ -208,17 +219,20 @@ if __name__ == "__main__":
   # sample actual environment rollouts
   config = {
     'task': tasks.NoReward(),
-    'action_space': action_spaces.SelectBounce(),
+    # 'action_space': action_spaces.SelectBounce(),
+    'action_space': SeededSelectBounce(FLAGS.seed),
     'renderers': rndrs,
     'init_sprites': sprite_gen,
     'max_episode_length': FLAGS.max_episode_length,
     'metadata': {
       'name': 'test',  # os.path.basename(__file__),
-    }
+    },
+    'seed': FLAGS.seed
   }
 
   env = environment.Environment(**config)
   env = gymw.GymWrapper(env)
+  env.action_space.seed(FLAGS.seed)  # reproduce randomness in action space
 
   # write movie of actual environment rollouts
   plot_kwargs = dict(show_resets=True, show_clicks=True)
@@ -230,7 +244,7 @@ if __name__ == "__main__":
   tr = StateActionStateDataset(data, sprites)
 
   # sample model-based rollouts
-  model =  ModelBasedSelectBounce(tr)
+  model =  ModelBasedSelectBounce(tr, seed=FLAGS.seed)
   config2 = {
     'task': tasks.NoReward(),
     'action_space': model,
@@ -239,11 +253,13 @@ if __name__ == "__main__":
     'max_episode_length': FLAGS.max_episode_length,
     'metadata': {
       'name': 'test',  # os.path.basename(__file__),
-    }
+    },
+    'seed': FLAGS.seed
   }
 
   env2 = environment.Environment(**config2)
   env2 = gymw.GymWrapper(env2)
+  env2.action_space.seed(FLAGS.seed)  # reproduce randomness in action space
 
   # write movie of model-based rollouts
   res2 = anim(env2, FLAGS.num_frames, filename=os.path.join(FLAGS.results_dir,
