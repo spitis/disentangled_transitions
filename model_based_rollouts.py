@@ -6,113 +6,17 @@ import sys
 
 from colour import Color
 import numpy as np
-from sklearn.linear_model import LinearRegression
-from spriteworld import environment, renderers, tasks, action_spaces
+from spriteworld import environment, renderers, tasks
 from spriteworld import factor_distributions as distribs
 from spriteworld import sprite_generators
 from spriteworld import gym_wrapper as gymw
-import torch
 
-from coda_forward_model import create_factorized_dataset
-from utils import anim
-
-
-class StateActionStateDataset(torch.utils.data.Dataset):
-  """Relabels the data up front using relabel_strategy"""
-
-  def __init__(self, data, sprites):
-    self.data = data
-    self.sprites = sprites
-
-    self.s1, self.a, _, self.s2 = list(zip(*self.data))
-
-    self.s1 = torch.tensor(self.s1).detach()
-    self.a = torch.tensor(self.a).detach()
-    self.s2 = torch.tensor(self.s2).detach()
-
-  def __len__(self):
-    return len(self.s1)
-
-  def __getitem__(self, idx):
-    if torch.is_tensor(idx):
-      idx = idx.tolist()
-    s1 = self.s1[idx]
-    a = self.a[idx]
-    s2 = self.s2[idx]
-    return torch.cat((s1, a), 0), s2
-
-
-class StateActionTestDataset(torch.utils.data.Dataset):
-  def __init__(self, data, sprites):
-    self.s1, self.a, _, self.s2 = list(zip(*data))
-    self.s1 = torch.tensor(self.s1).detach().flatten(start_dim=1)
-    self.a = torch.tensor(self.a).detach()
-    self.s2 = torch.tensor(self.s2).detach().flatten(start_dim=1)
-
-  def __len__(self):
-    return len(self.s1)
-
-  def __getitem__(self, idx):
-    if torch.is_tensor(idx):
-      idx = idx.tolist()
-    s1 = self.s1[idx]
-    a = self.a[idx]
-    s2 = self.s2[idx]
-    return torch.cat((s1, a), 0), s2
-
-
-class SeededSelectBounce(action_spaces.SelectBounce):
-  def __init__(self, seed=None, noise_scale=0.01, prevent_intersect=0.1):
-    super(SeededSelectBounce, self).__init__(
-      noise_scale=noise_scale, prevent_intersect=prevent_intersect)
-    self.seed(seed)
-
-  def seed(self, seed=None):
-    np.random.seed(seed)
-
-
-class ModelBasedSelectBounce(SeededSelectBounce):
-  """Swaps spriteworld environment dynamics with regressor learned from data."""
-  def __init__(self, dataset, seed=None, noise_scale=0.01,
-               prevent_intersect=0.1):
-    super(ModelBasedSelectBounce, self).__init__(
-      seed=seed,
-      noise_scale=noise_scale,
-      prevent_intersect=prevent_intersect
-    )
-    # fit model
-    data = dataset.data
-    X = np.vstack(
-      [np.hstack((state.ravel(), action.ravel()))
-       for state, action, _, _ in data]
-    )
-    y = np.stack(
-      [next_state.ravel() for _, _, _, next_state in data]
-    )
-    self.model = LinearRegression().fit(X, y).predict
-
-  def step(self, action, sprites, *unused_args, **unused_kwargs):
-    """Take an action and move the sprites.
-    Args:
-      action: Numpy array of shape (2,) in [0, 1].
-      sprites: Iterable of sprite.Sprite() instances.
-    Returns:
-      Scalar cost of taking this action.
-    """
-    state = np.vstack(
-      [np.hstack((sprite.x, sprite.y, sprite.velocity))
-       for sprite in sprites]
-    )  # N_sprites x 4 matrix
-    model_input = np.hstack((state.ravel(), action.ravel()))  # flatten + concat
-    model_input = model_input.reshape(1, -1)  # expand dimension for sklearn
-    next_state = self.model(model_input)  # flattened predicted next state
-    next_state = next_state.reshape(state.shape)  # unflatten
-    for sprite, sprite_next_state in zip(sprites, next_state):
-      position, velocity = sprite_next_state[:2], sprite_next_state[2:]
-      sprite._position = position
-      sprite._velocity = velocity
-
-    return 0.
+from data_utils import create_factorized_dataset
+from data_utils import StateActionStateDataset
+from dynamics_models import LinearModelBasedSelectBounce
+from dynamics_models import NeuralModelBasedSelectBounce
+from dynamics_models import SeededSelectBounce
+from plot_utils import anim
 
 
 if __name__ == "__main__":
@@ -140,9 +44,13 @@ if __name__ == "__main__":
                       type=int,
                       default=5000,
                       help='Max length of an episode.')
+  parser.add_argument('--model_type',
+                      type=str,
+                      default='linear',
+                      help='Type of dynamics model.')
   parser.add_argument('--results_dir',
                       type=str,
-                      default='/tmp/linear_dynamics_model',
+                      default='/tmp/model_based_rollouts',
                       help='Output directory.')
 
   FLAGS = parser.parse_args()
@@ -236,15 +144,22 @@ if __name__ == "__main__":
 
   # write movie of actual environment rollouts
   plot_kwargs = dict(show_resets=True, show_clicks=True)
-  res = anim(env, FLAGS.num_frames, filename=os.path.join(FLAGS.results_dir,
-                                             'ground_truth.mp4'), **plot_kwargs)
+  res = anim(env,
+             FLAGS.num_frames,
+             filename=os.path.join(FLAGS.results_dir, 'ground_truth.mp4'),
+             **plot_kwargs)
 
   # sample dataset from environment
   data, sprites = create_factorized_dataset(env, FLAGS.num_examples)
   tr = StateActionStateDataset(data, sprites)
 
   # sample model-based rollouts
-  model =  ModelBasedSelectBounce(tr, seed=FLAGS.seed)
+  if FLAGS.model_type == 'linear':
+    model = LinearModelBasedSelectBounce(tr, seed=FLAGS.seed)
+  elif FLAGS.model_type == 'neural':
+    model = NeuralModelBasedSelectBounce(tr, seed=FLAGS.seed)
+  else:
+    raise ValueError("Bad model type.")
   config2 = {
     'task': tasks.NoReward(),
     'action_space': model,
@@ -262,8 +177,9 @@ if __name__ == "__main__":
   env2.action_space.seed(FLAGS.seed)  # reproduce randomness in action space
 
   # write movie of model-based rollouts
-  res2 = anim(env2, FLAGS.num_frames, filename=os.path.join(FLAGS.results_dir,
-                                               'model_based.mp4'),
+  res2 = anim(env2,
+              FLAGS.num_frames,
+              filename=os.path.join(FLAGS.results_dir, 'model_based.mp4'),
               **plot_kwargs)
 
   logging.info('done')

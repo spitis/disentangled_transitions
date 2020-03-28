@@ -17,34 +17,9 @@ from spriteworld import sprite_generators
 from spriteworld import gym_wrapper as gymw
 import torch
 
+from data_utils import create_factorized_dataset
 from structured_transitions import MaskedNetwork
-from utils import anim
-
-
-def create_factorized_dataset(env, num_transitions=20000, reset_prob=0.05,
-                              print_every=1000):
-  data = []
-  sprites = []
-  s1 = env.reset()
-  sprites1 = copy.deepcopy(env._env.state()['sprites'])
-  i = 1
-  while len(data) < num_transitions:
-    i += 1
-    if i % print_every == 0:
-      print('.', end='', flush=True)
-    a = env.action_space.sample()
-    s2, r, _, _ = env.step(a)
-
-    data.append((s1['disentangled'], a, r, s2['disentangled']))
-    sprites.append(sprites1)
-
-    s1 = s2
-    sprites1 = copy.deepcopy(env._env.state()['sprites'])
-
-    if np.random.random() < reset_prob:
-      s1 = env.reset()
-      sprites1 = copy.deepcopy(env._env.state()['sprites'])
-  return data, sprites
+from plot_utils import anim
 
 
 def plot_losses(tr_loss_none, te_loss_none,
