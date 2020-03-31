@@ -12,13 +12,14 @@ from data_utils import create_factorized_dataset
 from data_utils import make_env
 from data_utils import StateActionStateDataset
 from dynamics_models import LinearModelBasedSelectBounce
+from dynamics_models import LSTMModelBasedSelectBounce
 from dynamics_models import NeuralModelBasedSelectBounce
 from dynamics_models import SeededSelectBounce
 from plot_utils import anim
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser("CoDA generate data.")
+  parser = argparse.ArgumentParser("Sample model-based rollouts.")
   parser.add_argument('--results_dir',
                       type=str,
                       default='/tmp/model_based_rollouts',
@@ -93,8 +94,10 @@ if __name__ == "__main__":
     os.makedirs(FLAGS.results_dir)
 
   # set log file
-  logging.basicConfig(filename=os.path.join(FLAGS.results_dir, 'main.log'),
-                      level=logging.INFO)
+  log_filename = os.path.join(FLAGS.results_dir, 'main.log')
+  if os.path.exists(log_filename):
+    os.remove(log_filename)
+  logging.basicConfig(filename=log_filename, level=logging.INFO)
   # log to std err
   console = logging.StreamHandler()
   console.setLevel(logging.INFO)
@@ -119,6 +122,7 @@ if __name__ == "__main__":
   )  # validation data
 
   # sample model-based rollouts
+  logging.info('Declaring a %s model.' % FLAGS.model_type)
   if FLAGS.model_type == 'linear':
     model = LinearModelBasedSelectBounce(tr, seed=FLAGS.seed)
   elif FLAGS.model_type == 'neural':
@@ -134,6 +138,16 @@ if __name__ == "__main__":
                                          patience_epochs=FLAGS.patience_epochs,
                                          weight_decay=FLAGS.weight_decay,
                                          seed=FLAGS.seed)
+  elif FLAGS.model_type == 'lstm':
+    tr_loader = DataLoader(tr, FLAGS.batch_size, shuffle=True)
+    va_loader = DataLoader(va, FLAGS.batch_size, shuffle=True)
+    model = LSTMModelBasedSelectBounce(tr_loader,
+                                       va_loader,
+                                       lr=FLAGS.lr,
+                                       num_epochs=FLAGS.num_epochs,
+                                       patience_epochs=FLAGS.patience_epochs,
+                                       weight_decay=FLAGS.weight_decay,
+                                       seed=FLAGS.seed)
   else:
     raise ValueError("Bad model type.")
   config2, env2 = make_env(num_sprites=FLAGS.num_sprites, action_space=model, seed=FLAGS.seed, 

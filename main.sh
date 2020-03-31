@@ -21,23 +21,35 @@
 #  --weight_decay 0. \
 #  --results_dir /scratch/gobi1/creager/disentangled_transitions/coda_forward_model
 
-## small
+# small
+model_type=neural
+RESULTS_DIR=/tmp/model_based_rollouts/$model_type
 time python model_based_rollouts.py \
-  --model_type neural \
+  --model_type $model_type \
   --num_sprites 3 \
   --imagedim 20 \
   --seed 0 \
-  --num_examples 100 \
-  --patience_epochs 100 \
+  --num_examples 5000 \
+  --num_epochs 100 \
+  --patience_epochs 25 \
+  --batch_size 64 \
   --num_frames 100 \
   --max_episode_length 500 \
-  --results_dir /tmp/neural_model_based_rollouts
+  --results_dir $RESULTS_DIR
 
-#time python model_based_rollouts.py \
-#  --model_type neural \
+## vws
+#for model_type in linear neural lstm
+#do
+#  GOBI_DIR=/scratch/gobi1/creager/disentangled_transitions
+#  RESULTS_DIR=$GOBI_DIR/model_based_rollouts/$model_type
+#  time python model_based_rollouts.py \
+#  --model_type $model_type \
 #  --num_sprites 6 \
 #  --imagedim 20 \
 #  --seed 0 \
-#  --num_examples 100 \
+#  --num_examples 10000 \
+#  --patience_epochs 100 \
 #  --max_episode_length 500 \
-#  --results_dir /scratch/gobi1/creager/disentangled_transitions/model_based_rollouts
+#  --results_dir $RESULTS_DIR
+#done
+
