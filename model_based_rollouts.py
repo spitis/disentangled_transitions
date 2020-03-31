@@ -122,7 +122,6 @@ if __name__ == "__main__":
   va = StateActionStateDataset(
     *create_factorized_dataset(env, FLAGS.num_examples)
   )  # validation data
-  import pdb; pdb.set_trace()
 
   # sample model-based rollouts
   if FLAGS.model_type == 'linear':
