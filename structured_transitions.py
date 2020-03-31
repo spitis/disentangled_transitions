@@ -97,7 +97,7 @@ def gen_samples_static(num_seqs=16, seq_len=12, splits=[5, 3, 2]):
     fns.append(Randfn(split, split))
 
   for i in range(seq_len):
-    factors = seq[-1].split(splits, dim=1)
+    factors = seq[-1].split(splits, dim=1) 
     next_factors = [fn(f) for f, fn in zip(factors, fns)]
     seq.append(torch.cat(next_factors, 1))
 

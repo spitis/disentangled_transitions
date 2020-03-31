@@ -11,12 +11,9 @@ import sys
 import multiprocessing as mp
 import numpy as np
 from scipy.sparse.csgraph import connected_components
-from spriteworld import environment, renderers, tasks, action_spaces
-from spriteworld import factor_distributions as distribs
-from spriteworld import sprite_generators
-from spriteworld import gym_wrapper as gymw
 import torch
 
+from data_utils import make_env
 from data_utils import create_factorized_dataset
 from structured_transitions import MaskedNetwork
 from plot_utils import anim
@@ -111,7 +108,7 @@ if __name__ == "__main__":
                       help='Image dimension.')
   parser.add_argument('--batch_size',
                       type=int,
-                      default=1000, 
+                      default=500, 
                       help='Batch size.')
   parser.add_argument('--lr',
                       type=float,
@@ -173,60 +170,8 @@ if __name__ == "__main__":
   # set random seed
   np.random.seed(FLAGS.seed)
 
-  # build factors
-  factors = distribs.Product([
-    distribs.Continuous('x', 0.05, 0.95),
-    distribs.Continuous('y', 0.05, 0.95),
-    distribs.Continuous('c0', 25, 230),
-    distribs.Continuous('c1', 25, 230),
-    distribs.Continuous('c2', 25, 230),
-    distribs.Continuous('x_vel', -0.08, 0.08),
-    distribs.Continuous('y_vel', -0.08, 0.08),
-    distribs.Discrete('shape', ['square']),
-    distribs.Discrete('move_noise', [0.]),
-    distribs.Discrete('scale', [0.15]),
-  ])
-
-  sprite_gen = sprite_generators.generate_nonintersecting_sprites(
-    factors, num_sprites=FLAGS.num_sprites)
-  sprite_gen = sprite_generators.sort_by_color(sprite_gen)
-
-  # Above code produces random colors but has sensible ordering.
-  # Below line forces fixed colors (bad for generalization, but presumably
-  # easier to learn from images)
-
-  sprite_gen = sprite_generators.fix_colors(sprite_gen,
-                                            [(250, 125, 0), (0, 255, 125),
-                                             (125, 0, 255), (255, 255, 255)])
-
-  random_mtx = (np.random.rand(100, 100) - 0.5) * 2.
-  fn = lambda a: np.dot(random_mtx[:len(a), :len(a)], a)
-
-  # WARNING: Because this uses velocity, using images makes it a POMDP!
-
-  rndrs = {
-    'image': renderers.PILRenderer(image_size=(FLAGS.imagedim, FLAGS.imagedim),
-                                   anti_aliasing=16),
-    'disentangled': renderers.VectorizedPositionsAndVelocities(),
-    'entangled': renderers.FunctionOfVectorizedPositionsAndVelocities(fn=fn),
-    'mask': renderers.TransitionEntanglementMask(state_size=4, action_size=2),
-    'mask_abstract': renderers.TransitionEntanglementMask(state_size=1,
-                                                          action_size=1)
-  }
-
-  config = {
-    'task': tasks.NoReward(),
-    'action_space': action_spaces.SelectBounce(),
-    'renderers': rndrs,
-    'init_sprites': sprite_gen,
-    'max_episode_length': FLAGS.max_episode_length,
-    'metadata': {
-      'name': 'test',  # os.path.basename(__file__),
-    }
-  }
-
-  env = environment.Environment(**config)
-  env = gymw.GymWrapper(env)
+  config, env = make_env(num_sprites=FLAGS.num_sprites, seed=FLAGS.seed, 
+    imagedim=FLAGS.imagedim, max_episode_length=FLAGS.max_episode_length)
 
   res = anim(env, 200, filename=os.path.join(FLAGS.results_dir, 'env.mp4'))
 
@@ -310,7 +255,7 @@ if __name__ == "__main__":
     return list(map(tuple, res))
 
 
-  def relabel_independent_transitions(t1, sprites1, t2, sprites2,
+  def relabel_independent_transitions(t1, sprites1, t2, sprites2, reward_fn=lambda _: 0,
                                       total_samples=10, flattened=True,
                                       custom_get_mask=None, sample_multiplier=3,
                                       max_ccs=6):
@@ -396,9 +341,9 @@ if __name__ == "__main__":
                                                        get_mask)
           proposed_dc = disentangled_components(proposed_cc)
           if dc in proposed_dc:
-            res.append((proposed_s1, proposed_action, 0, proposed_s2))
+            res.append((proposed_s1, proposed_action, reward_fn(proposed_s2), proposed_s2))
         else:
-          res.append((proposed_s1, proposed_action, 0, proposed_s2))
+          res.append((proposed_s1, proposed_action, reward_fn(proposed_s2), proposed_s2))
 
     while len(res) < total_samples:
       res.append(res[np.random.choice(len(res))])
@@ -410,7 +355,7 @@ if __name__ == "__main__":
     return relabel_independent_transitions(*args)
 
 
-  def enlarge_dataset(data, sprites, num_pairs, relabel_samples_per_pair,
+  def enlarge_dataset(data, sprites, reward_fn, num_pairs, relabel_samples_per_pair,
                       flattened=True, custom_get_mask=None):
     data_len = len(data)
     all_idx_pairs = np.array(
@@ -420,14 +365,14 @@ if __name__ == "__main__":
 
     args = []
     for (i, j) in chosen_idx_pairs:
-      args.append((data[i], sprites[i], data[j], sprites[j],
+      args.append((data[i], sprites[i], data[j], sprites[j], reward_fn,
                    relabel_samples_per_pair, flattened, custom_get_mask))
 
     with mp.Pool(min(mp.cpu_count() - 1, 16)) as pool:
       reses = pool.map(relabel, args)
     return sum(reses, [])
 
-  res = enlarge_dataset(data, sprites, FLAGS.num_pairs,
+  res = enlarge_dataset(data, sprites, config['task'].reward_of_vector_repr, FLAGS.num_pairs,
                         FLAGS.relabel_samples_per_pair, flattened=True,
                         custom_get_mask=get_true_flat_mask)
 
@@ -437,7 +382,7 @@ if __name__ == "__main__":
   class StateActionStateRelabeledDataset(torch.utils.data.Dataset):
     """Relabels the data up front using relabel_strategy"""
 
-    def __init__(self, data, sprites,
+    def __init__(self, data, sprites, reward_fn=lambda _: 0,
                  relabel_strategy=RelabelStrategy.GROUND_TRUTH,
                  relabel_pairs=10000, samples_per_pair=5, custom_get_mask=None):
       if custom_get_mask is not None:
@@ -452,7 +397,7 @@ if __name__ == "__main__":
         raise NotImplementedError
 
       self.data = enlarge_dataset(
-        data, sprites, relabel_pairs, samples_per_pair,
+        data, sprites, reward_fn, relabel_pairs, samples_per_pair,
         flattened=True, custom_get_mask=get_mask)
 
       self.s1, self.a, _, self.s2 = list(zip(*self.data))
@@ -492,11 +437,11 @@ if __name__ == "__main__":
       return torch.cat((s1, a), 0), s2
 
 
-  tr_none = StateActionStateRelabeledDataset(data, sprites,
+  tr_none = StateActionStateRelabeledDataset(data, sprites, config['task'].reward_of_vector_repr,
                                              RelabelStrategy.NONE)
-  tr_true = StateActionStateRelabeledDataset(data, sprites,
+  tr_true = StateActionStateRelabeledDataset(data, sprites, config['task'].reward_of_vector_repr,
                                              RelabelStrategy.GROUND_TRUTH)
-  tr_rand = StateActionStateRelabeledDataset(data, sprites,
+  tr_rand = StateActionStateRelabeledDataset(data, sprites, config['task'].reward_of_vector_repr,
                                              RelabelStrategy.RANDOM)
   te = StateActionTestDataset(test_data, test_sprites)
 
