@@ -52,5 +52,5 @@ class StateActionStateDataset(torch.utils.data.Dataset):
     s1 = self.s1[idx]
     a = self.a[idx]
     s2 = self.s2[idx]
-    return torch.cat((s1, a), 0), s2
+    return s1, a, s2
 

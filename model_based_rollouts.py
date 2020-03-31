@@ -10,6 +10,8 @@ from spriteworld import environment, renderers, tasks
 from spriteworld import factor_distributions as distribs
 from spriteworld import sprite_generators
 from spriteworld import gym_wrapper as gymw
+import torch
+from torch.utils.data import DataLoader
 
 from data_utils import create_factorized_dataset
 from data_utils import StateActionStateDataset
@@ -21,6 +23,10 @@ from plot_utils import anim
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser("CoDA generate data.")
+  parser.add_argument('--results_dir',
+                      type=str,
+                      default='/tmp/model_based_rollouts',
+                      help='Output directory.')
   parser.add_argument('--num_sprites',
                       type=int,
                       default=4, help='Number of sprites.')
@@ -48,10 +54,31 @@ if __name__ == "__main__":
                       type=str,
                       default='linear',
                       help='Type of dynamics model.')
-  parser.add_argument('--results_dir',
-                      type=str,
-                      default='/tmp/model_based_rollouts',
-                      help='Output directory.')
+  parser.add_argument('--num_hidden_units',
+                      type=int,
+                      default=500,
+                      help='Number of hidden units.')
+  parser.add_argument('--lr',
+                      type=float,
+                      default=1e-3,
+                      help='Learning rate.')
+  parser.add_argument('--num_epochs',
+                      type=int,
+                      default=500,
+                      help='Number of epochs.')
+  parser.add_argument('--patience_epochs',
+                      type=int,
+                      default=20,
+                      help='Stop early after this many of epochs of '
+                           'unimproved validation loss.')
+  parser.add_argument('--batch_size',
+                      type=int,
+                      default=64,
+                      help='Batch size.')
+  parser.add_argument('--weight_decay',
+                      type=float,
+                      default=1e-5,
+                      help='Weight decay.')
 
   FLAGS = parser.parse_args()
   if not os.path.exists(FLAGS.results_dir):
@@ -152,12 +179,27 @@ if __name__ == "__main__":
   # sample dataset from environment
   data, sprites = create_factorized_dataset(env, FLAGS.num_examples)
   tr = StateActionStateDataset(data, sprites)
+  va = StateActionStateDataset(
+    *create_factorized_dataset(env, FLAGS.num_examples)
+  )  # validation data
+  import pdb; pdb.set_trace()
 
   # sample model-based rollouts
   if FLAGS.model_type == 'linear':
     model = LinearModelBasedSelectBounce(tr, seed=FLAGS.seed)
   elif FLAGS.model_type == 'neural':
-    model = NeuralModelBasedSelectBounce(tr, seed=FLAGS.seed)
+    tr_loader = DataLoader(tr, FLAGS.batch_size, shuffle=True)
+    va_loader = DataLoader(va, FLAGS.batch_size, shuffle=True)
+    activ_fn = torch.nn.ReLU()  # TODO(): replace with proper gin-configured fn
+    model = NeuralModelBasedSelectBounce(tr_loader,
+                                         va_loader,
+                                         FLAGS.num_hidden_units,
+                                         activ_fn,
+                                         lr=FLAGS.lr,
+                                         num_epochs=FLAGS.num_epochs,
+                                         patience_epochs=FLAGS.patience_epochs,
+                                         weight_decay=FLAGS.weight_decay,
+                                         seed=FLAGS.seed)
   else:
     raise ValueError("Bad model type.")
   config2 = {
