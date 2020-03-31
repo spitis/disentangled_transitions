@@ -4,12 +4,7 @@ import logging
 import os
 import sys
 
-from colour import Color
 import numpy as np
-from spriteworld import environment, renderers, tasks
-from spriteworld import factor_distributions as distribs
-from spriteworld import sprite_generators
-from spriteworld import gym_wrapper as gymw
 import torch
 from torch.utils.data import DataLoader
 
