@@ -4,11 +4,51 @@ import logging
 
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
 from spriteworld import action_spaces
 import torch
 import cmath
 
 Tensor = torch.Tensor
+Array = np.ndarray
+
+
+def compute_test_loss(action_space, test_loader):
+  """Compute test loss for a model-based action space."""
+
+  if not hasattr(action_space, 'CONSUMES_TENSORS'):
+    raise ValueError(
+      'Received action space of bad type: %s' % type(action_space)
+    )
+
+  def _predict_next_state(state, action):
+    """Predicts next state and returns as np array on the cpu."""
+    if action_space.CONSUMES_TENSORS:
+      with torch.no_grad():
+        next_state = action_space.model(state, action)
+        return next_state.cpu().numpy()
+    else:
+      state = state.cpu().numpy()
+      action = action.cpu().numpy()
+      return action_space.model(state, action)
+
+  # accumulate predictions for all test examples
+  next_states = []
+  pred_next_states = []
+  for state, action, next_state in test_loader:
+    pred_next_state = _predict_next_state(state, action)
+    pred_next_states.append(pred_next_state)
+    next_state = next_state.cpu().numpy()  # for compatability with sklearn
+    next_states.append(next_state)
+
+  # compute errors from all predictions
+  next_states = np.vstack(next_states)
+  num_test_examples = len(next_states)
+  next_states = next_states.reshape(num_test_examples, -1)  # flatten
+  pred_next_states = np.vstack(pred_next_states)
+  pred_next_states = pred_next_states.reshape(num_test_examples, -1)  # flatten
+  test_loss = mean_squared_error(next_states, pred_next_states)
+  return test_loss
 
 
 class SeededSelectBounce(action_spaces.SelectBounce):
@@ -53,6 +93,8 @@ class SeededSelectRedirect(SeededSelectBounce):
 
 class LinearModelBasedSelectBounce(SeededSelectBounce):
   """Swaps spriteworld environment dynamics with regressor learned from data."""
+  CONSUMES_TENSORS = False
+
   def __init__(self, dataset, seed=None, noise_scale=0.01,
                prevent_intersect=0.1):
     super(LinearModelBasedSelectBounce, self).__init__(
@@ -69,7 +111,20 @@ class LinearModelBasedSelectBounce(SeededSelectBounce):
     y = np.stack(
       [next_state.ravel() for _, _, _, next_state in data]
     )
-    self.model = LinearRegression().fit(X, y).predict
+    regressor = LinearRegression().fit(X, y)
+    self.model = partial(self.predict_next_state, regressor)
+
+  @staticmethod
+  def predict_next_state(model: LinearRegression,
+                         state: Array,
+                         action: Array):
+    state_shape = state.shape
+    batch_size = state_shape[0]
+    state = state.reshape((batch_size, -1))  # flatten
+    model_input = np.hstack((state, action))
+    next_state = model.predict(model_input)  # flattened predicted next state
+    next_state = next_state.reshape(state_shape)  # unflatten
+    return next_state
 
   def step(self, action, sprites, *unused_args, **unused_kwargs):
     """Take an action and move the sprites.
@@ -83,10 +138,10 @@ class LinearModelBasedSelectBounce(SeededSelectBounce):
       [np.hstack((sprite.x, sprite.y, sprite.velocity))
        for sprite in sprites]
     )  # N_sprites x 4 matrix
-    model_input = np.hstack((state.ravel(), action.ravel()))  # flatten + concat
-    model_input = model_input.reshape(1, -1)  # expand dimension for sklearn
-    next_state = self.model(model_input)  # flattened predicted next state
-    next_state = next_state.reshape(state.shape)  # unflatten
+    state = np.expand_dims(state, 0)  # expand batch dim
+    action = np.expand_dims(action, 0)  # expand batch dim
+    next_state = self.model(state, action)
+    next_state = next_state.squeeze()  # remove batch dim
     for sprite, sprite_next_state in zip(sprites, next_state):
       position, velocity = sprite_next_state[:2], sprite_next_state[2:]
       sprite._position = position
@@ -96,7 +151,9 @@ class LinearModelBasedSelectBounce(SeededSelectBounce):
 
 
 class NeuralModelBasedSelectBounce(SeededSelectBounce):
+  """Swaps spriteworld environment dynamics with MLP learned from data."""
   EVAL_EVERY = 5  # TODO(): make this a command line arugment?
+  CONSUMES_TENSORS = True
 
   def __init__(self,
                train_loader: torch.utils.data.DataLoader,
@@ -229,12 +286,14 @@ class NeuralModelBasedSelectBounce(SeededSelectBounce):
 
 
 class LSTMModelBasedSelectBounce(SeededSelectBounce):
+  """Swaps spriteworld environment dynamics with LSTM learned from data."""
   EVAL_EVERY = 5  # TODO(): make this a command line arugment?
   NUM_LAYERS = 1  # TODO(): make this a command line arugment?
   BIAS = True  # TODO(): make this a command line arugment?
   BATCH_FIRST = True  # TODO(): make this a command line arugment?
   DROPOUT = 0.  # TODO(): make this a command line arugment?
   BIDIRECTIONAL = False  # cannot be true since we need causal predictions
+  CONSUMES_TENSORS = True
 
   def __init__(self,
                train_loader: torch.utils.data.DataLoader,
