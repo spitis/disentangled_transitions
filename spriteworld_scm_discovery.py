@@ -1,10 +1,10 @@
 from collections import defaultdict
+from functools import partial
 import json
 import os
 import pickle
 from pprint import pformat
 import sys
-from typing import Tuple
 
 from absl import app
 from absl import flags
@@ -14,10 +14,18 @@ import pandas as pd
 from sklearn import metrics
 import torch
 
-from static_scm_discovery import precision_recall
-from structured_transitions import gen_samples_dynamic
+from coda import get_true_flat_mask
+from data_utils import create_factorized_dataset
+from data_utils import make_env
+from data_utils import SpriteMaker
+from data_utils import StateActionStateDataset
+from dynamic_scm_discovery import compute_metrics
+from dynamic_scm_discovery import local_model_sparsity
+from dynamic_scm_discovery import plot_roc
+from dynamic_scm_discovery import plot_metrics
 from structured_transitions import MixtureOfMaskedNetworks
 from structured_transitions import TransitionsData
+
 
 Array = np.ndarray
 Tensor = torch.Tensor
@@ -25,94 +33,9 @@ DataLoader = torch.utils.data.DataLoader
 
 DEV = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def local_model_sparsity(
-      model: MixtureOfMaskedNetworks, threshold: float, batch: Tuple[Tensor]
-    ) -> Tuple[list, list]:
-    x, _, ground_truth_sparsity = batch
-    assert isinstance(model, MixtureOfMaskedNetworks), 'bad model'
-    _, mask, _ = model.forward_with_mask(x.to(DEV))
-    mask[mask < threshold] = 0
-    mask = torch.where(mask > threshold,
-                       torch.ones_like(mask),
-                       torch.zeros_like(mask))
-    predicted_sparsity = mask
-    return predicted_sparsity, ground_truth_sparsity
-
-
-def compute_metrics(
-    model: MixtureOfMaskedNetworks, loader: DataLoader
-):
-  model.eval()
-  scores = []
-  labels = []
-  for x, _, m_tru in loader:
-    _, m_hat, _ = model.forward_with_mask(x.to(DEV))
-    scores.append(m_hat.detach().cpu().numpy().ravel())
-    labels.append(m_tru.detach().cpu().numpy().ravel())
-  scores = np.hstack(scores)
-  labels = np.hstack(labels)
-  fpr, tpr, thresh = metrics.roc_curve(labels, scores)
-  auc = metrics.auc(fpr, tpr)
-  return fpr, tpr, thresh, auc
-
-
-def plot_roc(
-    results_dir: str,
-    model: MixtureOfMaskedNetworks,
-    loader: DataLoader,
-    seed: int = 0
-):
-  fpr, tpr, thresh, auc = compute_metrics(model, loader)
-
-  import matplotlib
-  matplotlib.use('Agg')
-  from matplotlib import pyplot as plt
-
-  plt.figure()
-  lw = 2
-  plt.plot(fpr, tpr, color='darkorange',
-           lw=lw, label='ROC curve (area = %0.2f)' % auc)
-  plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
-  plt.xlim([0.0, 1.0])
-  plt.ylim([0.0, 1.05])
-  plt.xlabel('False Positive Rate')
-  plt.ylabel('True Positive Rate')
-  plt.title('ROC For Ground Truth Sparsity Recovery')
-  plt.legend(loc="lower right")
-  plt.savefig(os.path.join(results_dir, 'roc_{}.pdf'.format(seed)))
-
-
-def plot_metrics(results_dir: str,
-                 train_losses: list, train_aucs: list,
-                 valid_losses: list, valid_aucs: list,
-                 seed: int):
-  import matplotlib
-  matplotlib.use('Agg')
-  from matplotlib import pyplot as plt
-
-  # TODO(creager): proper x-axis: multiply ticks by 25
-
-  fig, ax = plt.subplots(2, figsize=(8, 6))
-  ax[0].plot(train_losses, linestyle='-', c='gray', label='Train loss')
-  ax[1].plot(train_aucs, linestyle='-', c='blue', label='Train AUC')
-
-  # plt.ylim(0.0003, 0.0015)
-  ax[0].plot(valid_losses, linestyle='--', c='gray', label='Valid loss')
-  ax[1].plot(valid_aucs, linestyle='--', c='blue', label='Valid AUC')
-
-  ax[0].set_ylabel('Task loss', size=16)
-  ax[1].set_ylabel('Attention AUC', size=16)
-  for ax_ in ax:
-    ax_.set_xlabel('Epochs', size=16)
-    ax_.legend()
-  plt.suptitle('Learning metrics', size=16)
-  plt.tight_layout()
-  plt.savefig(os.path.join(results_dir, 'train_metrics_{}.pdf'.format(
-    seed)))
-
 
 def main(argv):
-  """Run the experiment."""
+  """Train attention mechanism on state-action tuples from spriteworld env."""
   del argv  # unused
 
   if not os.path.exists(FLAGS.results_dir):
@@ -131,7 +54,7 @@ def main(argv):
     os.makedirs(FLAGS.results_dir)
 
   # set log file
-  logging.get_absl_handler().use_absl_log_file('dynamic_scm_discovery',
+  logging.get_absl_handler().use_absl_log_file('spriteworld_scm_discovery',
                                                FLAGS.results_dir)
 
   # TAUS = np.linspace(0., .5, 11)  # tresholds to sweep when computing metrics
@@ -142,8 +65,6 @@ def main(argv):
   )
   dev = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-  FLAGS.splits = [int(split) for split in FLAGS.splits]
-
   for run in range(FLAGS.num_runs):
     auc_tr, auc_va = [], []
     losses_tr, losses_va = [], []
@@ -151,11 +72,41 @@ def main(argv):
     np.random.seed(seed)
 
     # create observational data
-    global_interactions, fns, samples = gen_samples_dynamic(
-      num_seqs=FLAGS.num_seqs, seq_len=FLAGS.seq_len, splits=FLAGS.splits,
-      epsilon=FLAGS.epsilon)
-    logging.info('Total global interactions: {}/{}'
-                 .format(global_interactions, len(samples[0])))
+    ground_truth_kwargs = dict(num_sprites=FLAGS.num_sprites, seed=seed,
+      max_episode_length=FLAGS.max_episode_length, imagedim=FLAGS.imagedim)
+    config, env = make_env(**ground_truth_kwargs)
+    env.action_space.seed(FLAGS.seed)  # reproduce randomness in action space
+
+    sprite_maker = SpriteMaker(partial(make_env, **ground_truth_kwargs))
+
+    # sample dataset from environment
+    data, sprites = create_factorized_dataset(env, FLAGS.num_examples)
+    tr = StateActionStateDataset(data, sprites)
+
+    # build ground truth masks
+    ground_truth_masks = []
+    for s, a in zip(tr.s1, tr.a):
+      # print(s.shape, a.shape)
+      a = a.numpy()
+      s = s.numpy()
+      sprites_ = sprite_maker(s)
+      mask = get_true_flat_mask(sprites_, config, a)
+      # delete last to columns of the sparsity pattern, which represent the
+      # mapping of current_state, current_action -> next_action
+      mask = mask[:, :-2]
+      ground_truth_masks.append(mask)
+    ground_truth_masks = np.stack(ground_truth_masks)
+    ground_truth_masks = torch.tensor(ground_truth_masks)
+
+    # stack (s, a) tuples and build samples tuple consumable by TransitionsData
+    states = tr.s1.reshape(FLAGS.num_examples, -1)
+    actions = tr.a
+    next_states = tr.s2.reshape(FLAGS.num_examples, -1)
+    x = torch.cat((states, actions), -1)
+    y = next_states
+    m = ground_truth_masks
+    samples = (x, y, m)
+
     dataset = TransitionsData(samples)
     tr = TransitionsData(dataset[:int(len(dataset) * 5 / 6)])
     te = TransitionsData(dataset[int(len(dataset) * 5 / 6):])
@@ -169,11 +120,16 @@ def main(argv):
     valid_loader = test_loader  # TODO(creager): don't do this
 
     # build model and optimizer
-    model = MixtureOfMaskedNetworks(in_features=sum(FLAGS.splits),
-                                    out_features=sum(FLAGS.splits),
-                                    num_components=3,
-                                    num_hidden_layers=2,
-                                    num_hidden_units=256).to(dev)
+    # TODO: determine problem dimensions from the dataset
+    num_action_features = 2
+    num_state_features = FLAGS.num_sprites * 4
+    model = MixtureOfMaskedNetworks(
+      in_features=num_state_features+num_action_features,
+      out_features=num_state_features,
+      num_components=FLAGS.num_sprites,  # TODO(): make a separate flag
+      num_hidden_layers=2,  # TODO(): add as configurable flag
+      num_hidden_units=256  # TODO(): add as configurable flag
+    ).to(dev)
 
     opt = torch.optim.Adam(model.parameters(), lr=FLAGS.lr,
                            weight_decay=FLAGS.weight_decay)
@@ -181,12 +137,13 @@ def main(argv):
     mask_criterion = torch.nn.L1Loss()
 
     # train
-
     for epoch in range(FLAGS.num_epochs):
       model.train()
       total_pred_loss, total_mask_loss, total_weight_loss, total_attn_loss = \
         (0., 0., 0., 0.)
       for i, (x, y, _) in enumerate(train_loader):
+        # TODO(creager): generalize this loop for spriteworld data loader
+        #  that also include actions and do not include ground truth masks
         pred_y, mask, attn = model.forward_with_mask(x.to(dev))
         pred_loss = pred_criterion(y.to(dev), pred_y)
         mask_loss = FLAGS.mask_reg * mask_criterion(
@@ -208,6 +165,7 @@ def main(argv):
         loss.backward()
         opt.step()
       if epoch % 25 == 0:
+        # TODO(): add stop early patience
         logging.info(
           'Run {}, Ep. {}. Pred: {:.5f}, Mask: {:.5f}, Attn: {:.5f}, Wt: {:.5f}'
           .format(run, epoch, total_pred_loss / i, total_mask_loss / i,
@@ -327,15 +285,23 @@ if __name__ == "__main__":
   flags.DEFINE_float('attn_reg', 1e-3, 'Attention regularization coefficient.')
   flags.DEFINE_float('weight_reg', 1e-3, 'Weight regularization coefficient.')
   flags.DEFINE_float('weight_decay', 1e-5, 'Weight decay.')
-  flags.DEFINE_integer('num_seqs', 1500, 'Number of sequences.')
-  flags.DEFINE_integer('seq_len', 10, 'Length of each sequence.')
+  # flags.DEFINE_integer('num_seqs', 1500, 'Number of sequences.')
+  # flags.DEFINE_integer('seq_len', 10, 'Length of each sequence.')
+  flags.DEFINE_integer('num_sprites', 4, 'Number of sprites.')
+  flags.DEFINE_integer('imagedim', 16, 'Image dimension.')
+  flags.DEFINE_integer('num_examples', 500, 'Number of examples in attention '
+                                            'mechanism training set.')
+  flags.DEFINE_integer('max_episode_length', 5000, 'Maximum length of an '
+                                                   'episode.')
   flags.DEFINE_integer('num_runs', 10, 'Number of times to run the experiment.')
   flags.DEFINE_integer('seed', 1, 'Random seed.')
   flags.DEFINE_integer('num_epochs', 250, 'Number of epochs of training.')
-  flags.DEFINE_list('splits', [3, 3, 3], 'Dimensions per state factor.')
+  flags.DEFINE_integer('patience_epochs', 20, 'Stop early after this many '
+                                              'epochs of unimproved '
+                                              'validation loss.')
+  # flags.DEFINE_list('splits', [3, 3, 3], 'Dimensions per state factor.')
   flags.DEFINE_boolean('verbose', False, 'If True, prints log info to std out.')
-  flags.DEFINE_float('epsilon', 1.5, 'Sparse/dense threshold per factor in MP.')
   flags.DEFINE_string(
-    'results_dir', '/tmp/dynamic_scm_discovery', 'Output directory.')
+    'results_dir', '/tmp/spriteworld_scm_discovery', 'Output directory.')
 
   app.run(main)

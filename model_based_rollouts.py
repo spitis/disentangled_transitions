@@ -66,7 +66,7 @@ if __name__ == "__main__":
   parser.add_argument('--patience_epochs',
                       type=int,
                       default=20,
-                      help='Stop early after this many of epochs of '
+                      help='Stop early after this many epochs of '
                            'unimproved validation loss.')
   parser.add_argument('--batch_size',
                       type=int,
