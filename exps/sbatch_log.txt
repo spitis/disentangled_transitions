@@ -1,0 +1,1 @@
+sbatch exps/cmd_v1.sh exps/test_rl_1.txt results/1/

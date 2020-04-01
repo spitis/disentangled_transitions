@@ -45,6 +45,7 @@ class ReplayBuffer(object):
     )
 
   def sample_list_of_sars(self, batch_size):
+    #always use the most recent data
     ind = np.random.randint(0, self.size, size=batch_size)
 
     sars = (

@@ -74,16 +74,17 @@ if __name__ == "__main__":
   parser.add_argument("--reward_type", default="min_pairwise")  # Which reward function to use
   parser.add_argument("--relabel_type", default=None, type=str)  # type of relabeling to do
   parser.add_argument("--relabel_every", default=1000, type=int)  # how often to do relabeling
-  parser.add_argument('--num_pairs', type=int, default=1000, help='Number of transition pairs to sample for relabeling.')
+  parser.add_argument('--num_pairs', type=int, default=2000, help='Number of transition pairs to sample for relabeling.')
   parser.add_argument('--coda_samples_per_pair',
                       type=int,
-                      default=10,
+                      default=5,
                       help='Number of relabels per transition pairs.')
   parser.add_argument('--opt_steps_per_env_step', type=int, default=1)
+  parser.add_argument('--tag', type=str, default='')
 
   args = parser.parse_args()
 
-  file_name = f"{args.policy}_{args.seed}_{args.reward_type}_{args.relabel_type}"
+  file_name = f"{args.policy}_{args.reward_type}_{args.relabel_type}_{args.opt_steps_per_env_step}_{args.tag}__{args.seed}"
   print("---------------------------------------")
   print(f"Policy: {args.policy}, Env: Bouncing Balls, Seed: {args.seed}")
   print("---------------------------------------")
