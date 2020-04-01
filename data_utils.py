@@ -12,6 +12,7 @@ from spriteworld import sprite_generators
 from spriteworld import gym_wrapper as gymw
 from dynamics_models import SeededSelectBounce, SeededSelectRedirect
 from scipy.spatial.distance import pdist as pairwise_distance, squareform
+
 class PairwiseDistanceSprites(tasks.AbstractTask):
   """Task is to min/max a function of pairwise distance between all the sprites"""
   
@@ -118,6 +119,18 @@ def make_env(num_sprites = 4, action_space = None, seed = 0,
   env.action_space.seed(seed)  # reproduce randomness in action space
   return config, env
   
+
+class SpriteMaker():
+  def __init__(self, make_env=make_env):
+    _, self.env = make_env()
+    self.sprites = self.env.state()['sprites']
+    
+  def __call__(self, state):
+    for sprite, s in zip(self.sprites, state.reshape(-1, 4)):
+      sprite._position = s[:2]
+      sprite._velocity = s[2:]
+    
+    return copy.deepcopy(self.sprites)    
 
 
 def create_factorized_dataset(env, num_transitions=20000, reset_prob=0.05,
