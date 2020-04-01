@@ -82,9 +82,10 @@ class SeededSelectRedirect(SeededSelectBounce):
 
     new_v = cmath.rect(v_scale, new_v_angle)
     new_v = np.array([new_v.real, new_v.imag]) + np.random.normal(loc=[0., 0.], scale=self._noise_scale)
+    new_v = new_v.astype(np.float32)  # for consistency with simulator and torch
     new_v = np.clip(new_v, -clicked_sprite._max_abs_vel, clicked_sprite._max_abs_vel)
     clicked_sprite._velocity = new_v
-      
+
     for sprite in sprites:
       sprite.update_position(keep_in_frame=True, barriers=barriers, prevent_intersect=self._prevent_intersect, acted_on=(sprite is clicked_sprite))
     return 0.
