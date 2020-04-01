@@ -2,9 +2,9 @@
 import argparse
 import logging
 import os
+import pickle
 import sys
 
-import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
@@ -14,7 +14,7 @@ from data_utils import StateActionStateDataset
 from dynamics_models import LinearModelBasedSelectBounce
 from dynamics_models import LSTMModelBasedSelectBounce
 from dynamics_models import NeuralModelBasedSelectBounce
-from dynamics_models import SeededSelectBounce
+from dynamics_models import compute_test_loss
 from plot_utils import anim
 
 
@@ -103,8 +103,9 @@ if __name__ == "__main__":
   console.setLevel(logging.INFO)
   logging.getLogger('').addHandler(console)
 
-  config, env = make_env(num_sprites=FLAGS.num_sprites, seed=FLAGS.seed, 
+  ground_truth_kwargs = dict(num_sprites=FLAGS.num_sprites, seed=FLAGS.seed,
     max_episode_length=FLAGS.max_episode_length, imagedim=FLAGS.imagedim)
+  config, env = make_env(**ground_truth_kwargs)
   env.action_space.seed(FLAGS.seed)  # reproduce randomness in action space
 
   # write movie of actual environment rollouts
@@ -120,14 +121,14 @@ if __name__ == "__main__":
   va = StateActionStateDataset(
     *create_factorized_dataset(env, FLAGS.num_examples)
   )  # validation data
+  tr_loader = DataLoader(tr, FLAGS.batch_size, shuffle=True)
+  va_loader = DataLoader(va, FLAGS.batch_size, shuffle=True)
 
   # sample model-based rollouts
   logging.info('Declaring a %s model.' % FLAGS.model_type)
   if FLAGS.model_type == 'linear':
     model = LinearModelBasedSelectBounce(tr, seed=FLAGS.seed)
   elif FLAGS.model_type == 'neural':
-    tr_loader = DataLoader(tr, FLAGS.batch_size, shuffle=True)
-    va_loader = DataLoader(va, FLAGS.batch_size, shuffle=True)
     activ_fn = torch.nn.ReLU()  # TODO(): replace with proper gin-configured fn
     model = NeuralModelBasedSelectBounce(tr_loader,
                                          va_loader,
@@ -139,8 +140,6 @@ if __name__ == "__main__":
                                          weight_decay=FLAGS.weight_decay,
                                          seed=FLAGS.seed)
   elif FLAGS.model_type == 'lstm':
-    tr_loader = DataLoader(tr, FLAGS.batch_size, shuffle=True)
-    va_loader = DataLoader(va, FLAGS.batch_size, shuffle=True)
     model = LSTMModelBasedSelectBounce(tr_loader,
                                        va_loader,
                                        lr=FLAGS.lr,
@@ -150,13 +149,38 @@ if __name__ == "__main__":
                                        seed=FLAGS.seed)
   else:
     raise ValueError("Bad model type.")
-  config2, env2 = make_env(num_sprites=FLAGS.num_sprites, action_space=model, seed=FLAGS.seed, 
+
+  # compute final test loss
+  te = StateActionStateDataset(
+    *create_factorized_dataset(env, FLAGS.num_examples)
+  )  # test data
+  te_loader = DataLoader(te)
+  logging.info('final train loss: {:.7f}'.format(
+    compute_test_loss(model, tr_loader)
+  ))
+  logging.info('final valid loss: {:.7f}'.format(
+    compute_test_loss(model, va_loader)
+  ))
+  logging.info('final test loss: {:.7f}'.format(
+    compute_test_loss(model, te_loader)
+  ))
+
+  model_based_kwargs = dict(num_sprites=FLAGS.num_sprites, action_space=model, seed=FLAGS.seed,
     max_episode_length=FLAGS.max_episode_length, imagedim=FLAGS.imagedim)
+  config2, env2 = make_env(**model_based_kwargs)
 
   # write movie of model-based rollouts
   res2 = anim(env2,
               FLAGS.num_frames,
               filename=os.path.join(FLAGS.results_dir, 'model_based.mp4'),
               **plot_kwargs)
+
+  # save environments kwargs to disk for reproducibility and use by RL agents
+  with open(os.path.join(FLAGS.results_dir, 'ground_truth_kwargs.p'),
+            'wb') as f:
+    pickle.dump(ground_truth_kwargs, f)
+
+  with open(os.path.join(FLAGS.results_dir, 'model_based_kwargs.p'), 'wb') as f:
+    pickle.dump(model_based_kwargs, f)
 
   logging.info('done')
