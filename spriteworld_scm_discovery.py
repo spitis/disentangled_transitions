@@ -19,11 +19,10 @@ from data_utils import create_factorized_dataset
 from data_utils import make_env
 from data_utils import SpriteMaker
 from data_utils import StateActionStateDataset
-from dynamic_scm_discovery import compute_metrics
 from dynamic_scm_discovery import local_model_sparsity
 from dynamic_scm_discovery import plot_roc
 from dynamic_scm_discovery import plot_metrics
-from structured_transitions import MixtureOfMaskedNetworks
+from dynamic_scm_discovery import train_attention_mechanism
 from structured_transitions import TransitionsData
 
 
@@ -119,86 +118,33 @@ def main(argv):
                                               drop_last=True)
     valid_loader = test_loader  # TODO(creager): don't do this
 
-    # build model and optimizer
-    # TODO: determine problem dimensions from the dataset
+    # train
     num_action_features = 2
     num_state_features = FLAGS.num_sprites * 4
-    model = MixtureOfMaskedNetworks(
-      in_features=num_state_features+num_action_features,
-      out_features=num_state_features,
-      num_components=FLAGS.num_sprites,  # TODO(): make a separate flag
-      num_hidden_layers=2,  # TODO(): add as configurable flag
-      num_hidden_units=256  # TODO(): add as configurable flag
-    ).to(dev)
-
-    opt = torch.optim.Adam(model.parameters(), lr=FLAGS.lr,
-                           weight_decay=FLAGS.weight_decay)
-    pred_criterion = torch.nn.MSELoss()
-    mask_criterion = torch.nn.L1Loss()
-
-    # train
-    for epoch in range(FLAGS.num_epochs):
-      model.train()
-      total_pred_loss, total_mask_loss, total_weight_loss, total_attn_loss = \
-        (0., 0., 0., 0.)
-      for i, (x, y, _) in enumerate(train_loader):
-        # TODO(creager): generalize this loop for spriteworld data loader
-        #  that also include actions and do not include ground truth masks
-        pred_y, mask, attn = model.forward_with_mask(x.to(dev))
-        pred_loss = pred_criterion(y.to(dev), pred_y)
-        mask_loss = FLAGS.mask_reg * mask_criterion(
-          torch.log(1. + mask), torch.zeros_like(mask))
-        attn_loss = FLAGS.attn_reg * torch.sqrt(attn).mean()
-
-        weight_loss = 0
-        for param in model.parameters():
-          weight_loss += mask_criterion(param, torch.zeros_like(param))
-        weight_loss *= FLAGS.weight_reg
-
-        total_pred_loss += pred_loss
-        total_mask_loss += mask_loss
-        total_attn_loss += attn_loss
-        total_weight_loss += weight_loss
-
-        loss = pred_loss + mask_loss + attn_loss + weight_loss
-        model.zero_grad()
-        loss.backward()
-        opt.step()
-      if epoch % 25 == 0:
-        # TODO(): add stop early patience
-        logging.info(
-          'Run {}, Ep. {}. Pred: {:.5f}, Mask: {:.5f}, Attn: {:.5f}, Wt: {:.5f}'
-          .format(run, epoch, total_pred_loss / i, total_mask_loss / i,
-                 total_attn_loss / i, total_weight_loss / i))
-        train_metrics = compute_metrics(model, train_loader)
-        auc_tr.append(train_metrics[-1])
-        valid_metrics = compute_metrics(model, valid_loader)
-        auc_va.append(valid_metrics[-1])
-        losses_tr.append(loss.detach().item())
-        # compute validation loss
-        model.eval()
-        valid_loss = 0.
-        for i, (x, y, _) in enumerate(valid_loader):
-          pred_y, mask, attn = model.forward_with_mask(x.to(dev))
-          pred_loss = pred_criterion(y.to(dev), pred_y)
-          mask_loss = FLAGS.mask_reg * mask_criterion(
-            torch.log(1. + mask), torch.zeros_like(mask))
-          attn_loss = FLAGS.attn_reg * torch.sqrt(attn).mean()
-
-          weight_loss = 0
-          for param in model.parameters():
-            weight_loss += mask_criterion(param, torch.zeros_like(param))
-          weight_loss *= FLAGS.weight_reg
-
-          total_pred_loss += pred_loss
-          total_mask_loss += mask_loss
-          total_attn_loss += attn_loss
-          total_weight_loss += weight_loss
-
-          valid_loss += pred_loss + mask_loss + attn_loss + weight_loss
-        valid_loss /= len(valid_loader)
-        losses_va.append(valid_loss.detach().item())
-
+    in_features = num_state_features + num_action_features
+    out_features = num_state_features
+    num_components = FLAGS.num_sprites  # TODO: make separate flag
+    num_hidden_layers = 2  # TODO: make command line arg
+    num_hidden_units = 256  # TODO: make command line arg
+    patience_epochs = None  # TODO: make command line arg
+    model, train_and_valid_metrics = train_attention_mechanism(
+      train_loader,
+      valid_loader,
+      in_features,
+      out_features,
+      num_components,
+      num_hidden_layers,
+      num_hidden_units,
+      FLAGS.lr,
+      FLAGS.weight_decay,
+      FLAGS.mask_reg,
+      FLAGS.attn_reg,
+      FLAGS.weight_reg,
+      FLAGS.num_epochs,
+      patience_epochs,
+      tag='Run %d' % run
+    )
+    losses_tr, auc_tr, losses_va, auc_va = train_and_valid_metrics
 
     # worst-case eval w.r.t. actual dynamic masks
     for tau in TAUS:

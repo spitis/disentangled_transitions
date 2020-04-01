@@ -10,8 +10,8 @@
 #  --num_epochs 50 \
 #  --batch_size 64 \
 #  --num_runs 1 \
-#  #--logtostderr
-#
+#  --logtostderr
+
 time python spriteworld_scm_discovery.py \
   --num_epochs 50 \
   --num_runs 2 \
