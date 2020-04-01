@@ -10,7 +10,7 @@ from spriteworld import environment, renderers, tasks
 from spriteworld import factor_distributions as distribs
 from spriteworld import sprite_generators
 from spriteworld import gym_wrapper as gymw
-from dynamics_models import SeededSelectBounce
+from dynamics_models import SeededSelectBounce, SeededSelectRedirect
 from scipy.spatial.distance import pdist as pairwise_distance, squareform
 class PairwiseDistanceSprites(tasks.AbstractTask):
   """Task is to min/max a function of pairwise distance between all the sprites"""
@@ -40,7 +40,7 @@ class PairwiseDistanceSprites(tasks.AbstractTask):
     return False # never terminates
 
 def make_env(num_sprites = 4, action_space = None, seed = 0,
-  max_episode_length=5000, imagedim=16, maximize_pairwise_dists=True):
+  max_episode_length=5000, imagedim=16, reward_type='min_pairwise'):
 
   # build factors
   factors = distribs.Product([
@@ -90,10 +90,18 @@ def make_env(num_sprites = 4, action_space = None, seed = 0,
   }
   
   if action_space is None:
-    action_space = SeededSelectBounce(seed)
+    action_space = SeededSelectRedirect(seed)
+
+  if reward_type == 'min_pairwise':
+    task = PairwiseDistanceSprites('min')
+  elif reward_type == 'max_pairwise':
+    task = PairwiseDistanceSprites('max')
+  else:
+    raise NotImplementedError
+
   # sample actual environment rollouts
   config = {
-    'task': PairwiseDistanceSprites(mode='max' if maximize_pairwise_dists else 'min'),
+    'task': task,
     # 'action_space': action_spaces.SelectBounce(),
     'action_space': action_space,
     'renderers': rndrs,

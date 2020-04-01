@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from spriteworld import action_spaces
 import torch
+import cmath
 
 Tensor = torch.Tensor
 
@@ -20,6 +21,33 @@ class SeededSelectBounce(action_spaces.SelectBounce):
     np.random.seed(seed)
     torch.manual_seed(seed)
 
+class SeededSelectRedirect(SeededSelectBounce):
+
+  def step(self, action, sprites, *unused_args, **unused_kwargs):
+    """
+    Causes sprite velocity to change direction.
+    """
+    if self._prevent_intersect > 0:
+      barriers = sprites
+    else:
+      barriers = []
+    sprite_poses = np.array([s.position for s in sprites])
+    dists = np.linalg.norm(action[None] - sprite_poses, axis=1)
+    closest_idx = np.argmin(dists)
+    clicked_sprite = sprites[closest_idx]
+
+    v_scale, v_angle = cmath.polar(complex(*clicked_sprite.velocity))
+    z, target_v_angle = cmath.polar(complex(*(clicked_sprite.position - action)))
+    new_v_angle = (1-z)*v_angle + z*target_v_angle
+
+    new_v = cmath.rect(v_scale, new_v_angle)
+    new_v = np.array([new_v.real, new_v.imag]) + np.random.normal(loc=[0., 0.], scale=self._noise_scale)
+    new_v = np.clip(new_v, -clicked_sprite._max_abs_vel, clicked_sprite._max_abs_vel)
+    clicked_sprite._velocity = new_v
+      
+    for sprite in sprites:
+      sprite.update_position(keep_in_frame=True, barriers=barriers, prevent_intersect=self._prevent_intersect, acted_on=(sprite is clicked_sprite))
+    return 0.
 
 
 

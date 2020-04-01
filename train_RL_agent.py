@@ -14,8 +14,8 @@ from agents import DDPG
 
 # Runs policy for X episodes and returns average reward
 # A fixed seed is used for the eval environment
-def eval_policy(t, policy, seed, eval_episodes=50, episode_len=50):
-  _, eval_env = make_env()
+def eval_policy(t, policy, seed, eval_episodes=50, episode_len=100, reward_type='min_pairwise'):
+  _, eval_env = make_env(reward_type=reward_type)
   eval_env = SymmetricActionWrapper(FlatEnvWrapper(eval_env))  
   eval_env.seed(seed + 100)
 
@@ -31,7 +31,7 @@ def eval_policy(t, policy, seed, eval_episodes=50, episode_len=50):
         done=True
       avg_reward += reward
       
-  avg_reward /= eval_episodes
+  avg_reward /= (eval_episodes * episode_len)
 
   print(f"Time {t} -- Evaluation over {eval_episodes} episodes: {avg_reward:.3f}")
   return avg_reward
@@ -55,9 +55,9 @@ if __name__ == "__main__":
   parser.add_argument("--policy", default="TD3")  # Policy name (TD3, DDPG or OurDDPG)
   parser.add_argument("--seed", default=0, type=int)  # Sets Gym, PyTorch and Numpy seeds
   parser.add_argument("--start_timesteps", default=5e3, type=int)  # Time steps initial random policy is used
-  parser.add_argument("--eval_freq", default=2e3, type=int)  # How often (time steps) we evaluate
+  parser.add_argument("--eval_freq", default=1e3, type=int)  # How often (time steps) we evaluate
   parser.add_argument("--max_timesteps", default=1e6, type=int)  # Max time steps to run environment
-  parser.add_argument("--expl_noise", default=0.1)  # Std of Gaussian exploration noise
+  parser.add_argument("--expl_noise", default=0.1, type=float)  # Std of Gaussian exploration noise
   parser.add_argument("--batch_size", default=256, type=int)  # Batch size for both actor and critic
   parser.add_argument("--discount", default=0.99)  # Discount factor
   parser.add_argument("--tau", default=0.005)  # Target network update rate
@@ -67,6 +67,7 @@ if __name__ == "__main__":
   parser.add_argument("--episode_len", default=50, type=int)  # Episode length before reset
   parser.add_argument("--save_model", action="store_true")  # Save model and optimizer parameters
   parser.add_argument("--load_model", default="")  # Model load file name, "" doesn't load, "default" uses file_name
+  parser.add_argument("--reward_type", default="min_pairwise")  # Model load file name, "" doesn't load, "default" uses file_name
   args = parser.parse_args()
 
   file_name = f"{args.policy}_{args.seed}"
@@ -80,8 +81,8 @@ if __name__ == "__main__":
   if args.save_model and not os.path.exists("./models"):
     os.makedirs("./models")
   
-  config, original_env = make_env()
-  _, env = make_env()
+  config, original_env = make_env(reward_type=args.reward_type)
+  _, env = make_env(reward_type=args.reward_type)
   env = SymmetricActionWrapper(FlatEnvWrapper(env))
 
   # Set seeds
@@ -120,7 +121,7 @@ if __name__ == "__main__":
   replay_buffer = utils.ReplayBuffer(state_dim, action_dim)
   
   # Evaluate untrained policy
-  evaluations = [eval_policy(0, policy, args.seed)]
+  evaluations = [eval_policy(0, policy, args.seed, reward_type=args.reward_type)]
 
   episode_reward = 0
   episode_timesteps = 0
@@ -168,6 +169,6 @@ if __name__ == "__main__":
 
     # Evaluate episode
     if (t + 1) % args.eval_freq == 0:
-      evaluations.append(eval_policy(t+1, policy, args.seed))
+      evaluations.append(eval_policy(t+1, policy, args.seed, reward_type=args.reward_type))
       np.save(f"./results/{file_name}", evaluations)
       if args.save_model: policy.save(f"./models/{file_name}")
