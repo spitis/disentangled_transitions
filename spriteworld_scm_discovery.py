@@ -127,7 +127,7 @@ def main(argv):
     num_hidden_layers = 2  # TODO: make command line arg
     num_hidden_units = 256  # TODO: make command line arg
     patience_epochs = None  # TODO: make command line arg
-    model, train_and_valid_metrics = train_attention_mechanism(
+    model, model_kwargs, train_and_valid_metrics = train_attention_mechanism(
       train_loader,
       valid_loader,
       in_features,
@@ -170,6 +170,8 @@ def main(argv):
             predicted_sparsity.ravel()
         )
       )
+      # TODO(creager): measure validation accuracy per tau and save best
+      #  threshold according to that metric.
 
     # plot train metrics
     plot_metrics(FLAGS.results_dir, losses_tr, auc_tr, losses_va, auc_va, seed)
@@ -219,6 +221,12 @@ def main(argv):
 
   with open(os.path.join(FLAGS.results_dir, 'results.p'), 'wb') as f:
     pickle.dump(results, f)
+
+  # save trained model and its initializing kwargs for future use
+  with open(os.path.join(FLAGS.results_dir, 'model_kwargs.json'), 'w') as f:
+    f.write(json.dumps(model_kwargs, indent=2))
+
+  torch.save(model.state_dict(), os.path.join(FLAGS.results_dir, 'model.p'))
 
   logging.info('done')
 

@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import gym
 import argparse
+import json
 import os
 import pickle
 from data_utils import make_env, SpriteMaker
@@ -14,13 +15,15 @@ from agents import DDPG
 
 from coda import get_true_abstract_mask, get_true_flat_mask, get_random_flat_mask, get_fully_connected_mask
 from coda import enlarge_dataset
+from structured_transitions import MixtureOfMaskedNetworks
 
 
 
 # Runs policy for X episodes and returns average reward
 # A fixed seed is used for the eval environment
-def eval_policy(policy, seed, eval_episodes=50, episode_len=100, reward_type='min_pairwise'):
-  _, eval_env = make_env(reward_type=reward_type)
+def eval_policy(policy, seed, num_sprites, eval_episodes=50, episode_len=100,
+                reward_type='min_pairwise'):
+  _, eval_env = make_env(num_sprites=num_sprites, reward_type=reward_type)
   eval_env = SymmetricActionWrapper(FlatEnvWrapper(eval_env))  
   eval_env.seed(seed + 100)
 
@@ -55,6 +58,8 @@ class SymmetricActionWrapper(gym.ActionWrapper):
 if __name__ == "__main__":
 
   parser = argparse.ArgumentParser()
+  parser.add_argument('--num_sprites', type=int, default=4, help='Number of sprites.')
+  # TODO(creager): make work with variable num_sprites
   parser.add_argument("--policy", default="TD3")  # Policy name (TD3, DDPG or OurDDPG)
   parser.add_argument("--seed", default=0, type=int)  # Sets Gym, PyTorch and Numpy seeds
   parser.add_argument("--start_timesteps", default=5e3, type=int)  # Time steps initial random policy is used
@@ -75,12 +80,11 @@ if __name__ == "__main__":
   parser.add_argument("--relabel_type", default=None, type=str)  # type of relabeling to do
   parser.add_argument("--relabel_every", default=1000, type=int)  # how often to do relabeling
   parser.add_argument('--num_pairs', type=int, default=2000, help='Number of transition pairs to sample for relabeling.')
-  parser.add_argument('--coda_samples_per_pair',
-                      type=int,
-                      default=5,
-                      help='Number of relabels per transition pairs.')
+  parser.add_argument('--attn_mech_dir', type=str, default='/tmp/spriteworld_scm_discovery', help='Path to folder containing trained attention mechanism model and its kwargs.')
+  parser.add_argument('--coda_samples_per_pair', type=int, default=5, help='Number of relabels per transition pairs.')
   parser.add_argument('--opt_steps_per_env_step', type=int, default=1)
   parser.add_argument('--tag', type=str, default='')
+  parser.add_argument("--thresh", default=0.1, type=float, help='Threshold on attention mask')
 
   args = parser.parse_args()
 
@@ -94,9 +98,10 @@ if __name__ == "__main__":
 
   if args.save_model and not os.path.exists("./models"):
     os.makedirs("./models")
-  
-  config, original_env = make_env(reward_type=args.reward_type)
-  _, env = make_env(reward_type=args.reward_type)
+
+  config, original_env = make_env(
+    num_sprites=args.num_sprites, reward_type=args.reward_type)
+  _, env = make_env(num_sprites=args.num_sprites, reward_type=args.reward_type)
   env = SymmetricActionWrapper(FlatEnvWrapper(env))
   state_to_sprites = SpriteMaker()
 
@@ -133,10 +138,10 @@ if __name__ == "__main__":
 
   replay_buffer = utils.ReplayBuffer(state_dim, action_dim)
   coda_buffer = utils.ReplayBuffer(state_dim, action_dim, max_size=int(4e6))
-  
+
   eval_episodes = 50
   # Evaluate untrained policy
-  evaluations = [eval_policy(policy, args.seed, eval_episodes=eval_episodes, reward_type=args.reward_type)]
+  evaluations = [eval_policy(policy, args.seed, args.num_sprites, eval_episodes=eval_episodes, reward_type=args.reward_type)]
   print(f"Time 0 -- Evaluation over {eval_episodes} episodes: {evaluations[-1]:.3f} --- coda_buffer length: {len(coda_buffer)}")
 
   episode_reward = 0
@@ -160,7 +165,7 @@ if __name__ == "__main__":
       ).clip(-max_action, max_action)
 
     # Perform action
-    next_state, reward, done, _ = env.step(action) 
+    next_state, reward, done, _ = env.step(action)
     done_bool = float(done) if episode_timesteps < args.episode_len else 0
 
     # Store data in replay buffer
@@ -170,23 +175,62 @@ if __name__ == "__main__":
     if (args.relabel_type) and (len(replay_buffer) % args.relabel_every) == 0:
       if args.relabel_type == 'ground_truth':
         get_mask = get_true_flat_mask
+      elif args.relabel_type == 'attn_mech':
+        model_path = os.path.join(args.attn_mech_dir, 'model.p')
+        model_kwargs_path = os.path.join(args.attn_mech_dir,
+                                         'model_kwargs.json')
+        # TODO(creager): move this function outside of for-loop?
+        with open(model_kwargs_path) as f:
+          model_kwargs = json.load(f)
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        attn_mech = MixtureOfMaskedNetworks(**model_kwargs)
+        attn_mech.load_state_dict(torch.load(model_path))
+        attn_mech.to(device)
+        attn_mech.eval()
+
+        def get_mask(sprites, config, action):
+          del config  # unused
+
+          state = np.vstack(
+            [np.hstack((sprite.x, sprite.y, sprite.velocity))
+             for sprite in sprites]
+          )  # N_sprites x 4 matrix
+          state = torch.tensor(state.ravel())
+          action = torch.tensor(action)
+          state = state.unsqueeze(0)  # expand batch dim
+          action = action.unsqueeze(0)  # expand batch dim
+          model_input = torch.cat((state, action), -1)
+          model_input = model_input.to(device)
+
+          with torch.no_grad():
+            _, mask, _ = attn_mech.forward_with_mask(model_input)
+            # add dummy columns for (state, action -> next action) portion
+            mask = mask.squeeze()
+            dummy_columns = torch.zeros(len(mask), 2)
+            mask = torch.cat((mask, dummy_columns), -1)
+          mask = mask.cpu().numpy()
+          print(mask.shape)
+          mask = (mask > args.thresh).astype(np.float32)
+          return mask
       else:
         raise NotImplementedError
       base_data = replay_buffer.sample_list_of_sars(args.num_pairs) #reusing numpairs here...
       sprites_for_base_data = [state_to_sprites(state) for state, _, _, _ in base_data]
-      
+
       lst = [state.round(2) for state, _, _, _ in base_data]
       og_state_set = set([tuple(a) for a in lst])
 
 
+      pool = args.relabel_type != 'attn_mech'  # attn mechanism doesn't pool
       coda_data = enlarge_dataset(base_data,
-                            sprites_for_base_data,
-                            config,
-                            args.num_pairs,
-                            args.coda_samples_per_pair,
-                            flattened=True,
-                            custom_get_mask=get_mask)
-      
+                                  sprites_for_base_data,
+                                  config,
+                                  args.num_pairs,
+                                  args.coda_samples_per_pair,
+                                  flattened=True,
+                                  custom_get_mask=get_mask,
+                                  pool=pool)
+
       # remove duplicates of original data
       coda_data = [(s, a, r, s2) for s, a, r, s2 in coda_data if not tuple(s.round(2)) in og_state_set]
 
@@ -222,7 +266,7 @@ if __name__ == "__main__":
 
     # Evaluate episode
     if (t + 1) % args.eval_freq == 0:
-      evaluations.append(eval_policy(policy, args.seed, eval_episodes=eval_episodes, reward_type=args.reward_type))
+      evaluations.append(eval_policy(policy, args.seed, args.num_sprites, eval_episodes=eval_episodes, reward_type=args.reward_type))
       print(f"Time {t+1} -- Evaluation over {eval_episodes} episodes: {evaluations[-1]:.3f} --- coda_buffer length: {len(coda_buffer)}")
       np.save(f"./results/{file_name}", evaluations)
       if args.save_model: 
