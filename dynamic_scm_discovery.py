@@ -25,6 +25,103 @@ DataLoader = torch.utils.data.DataLoader
 
 DEV = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+
+def train_attention_mechanism(
+    train_loader: DataLoader,
+    valid_loader: DataLoader,
+    in_features: int,
+    out_features: int,
+    num_components: int,
+    num_hidden_layers: int,
+    num_hidden_units: int,
+    lr: float,
+    weight_decay: float,
+    mask_reg: float,
+    attn_reg: float,
+    weight_reg: float,
+    num_epochs: int,
+    patient_epochs: int,
+    tag: str = 'Training'
+):
+  del patient_epochs  # TODO(creager): use this for early stopping
+  dev = 'cuda' if torch.cuda.is_available() else 'cpu'
+  # build model and optimizer
+  model = MixtureOfMaskedNetworks(in_features=in_features,
+                                  out_features=out_features,
+                                  num_components=num_components,
+                                  num_hidden_layers=num_hidden_layers,
+                                  num_hidden_units=num_hidden_units).to(dev)
+
+  opt = torch.optim.Adam(model.parameters(), lr=lr,
+                         weight_decay=weight_decay)
+  pred_criterion = torch.nn.MSELoss()
+  mask_criterion = torch.nn.L1Loss()
+  auc_tr, auc_va = [], []
+  losses_tr, losses_va = [], []
+
+  for epoch in range(num_epochs):
+    total_pred_loss, total_mask_loss, total_weight_loss, total_attn_loss = \
+      (0., 0., 0., 0.)
+    for i, (x, y, _) in enumerate(train_loader):
+      pred_y, mask, attn = model.forward_with_mask(x.to(dev))
+      pred_loss = pred_criterion(y.to(dev), pred_y)
+      mask_loss = mask_reg * mask_criterion(
+        torch.log(1. + mask), torch.zeros_like(mask))
+      attn_loss = attn_reg * torch.sqrt(attn).mean()
+
+      weight_loss = 0
+      for param in model.parameters():
+        weight_loss += mask_criterion(param, torch.zeros_like(param))
+      weight_loss *= weight_reg
+
+      total_pred_loss += pred_loss
+      total_mask_loss += mask_loss
+      total_attn_loss += attn_loss
+      total_weight_loss += weight_loss
+
+      loss = pred_loss + mask_loss + attn_loss + weight_loss
+      model.zero_grad()
+      loss.backward()
+      opt.step()
+    if epoch % 25 == 0:
+      logging.info(
+        tag + ' ' +
+        'Ep. {}. Pred: {:.5f}, Mask: {:.5f}, Attn: {:.5f}, Wt: {:.5f}'
+        .format(epoch, total_pred_loss / i, total_mask_loss / i,
+               total_attn_loss / i, total_weight_loss / i))
+      train_metrics = compute_metrics(model, train_loader)
+      auc_tr.append(train_metrics[-1])
+      valid_metrics = compute_metrics(model, valid_loader)
+      auc_va.append(valid_metrics[-1])
+      losses_tr.append(loss.detach().item())
+      # compute validation loss
+      model.eval()
+      valid_loss = 0.
+      for i, (x, y, _) in enumerate(valid_loader):
+        pred_y, mask, attn = model.forward_with_mask(x.to(dev))
+        pred_loss = pred_criterion(y.to(dev), pred_y)
+        mask_loss = mask_reg * mask_criterion(
+          torch.log(1. + mask), torch.zeros_like(mask))
+        attn_loss = attn_reg * torch.sqrt(attn).mean()
+
+        weight_loss = 0
+        for param in model.parameters():
+          weight_loss += mask_criterion(param, torch.zeros_like(param))
+        weight_loss *= weight_reg
+
+        total_pred_loss += pred_loss
+        total_mask_loss += mask_loss
+        total_attn_loss += attn_loss
+        total_weight_loss += weight_loss
+
+        valid_loss += pred_loss + mask_loss + attn_loss + weight_loss
+      valid_loss /= len(valid_loader)
+      losses_va.append(valid_loss.detach().item())
+
+  metrics = losses_tr, auc_tr, losses_va, auc_va
+  return model, metrics
+
+
 def local_model_sparsity(
       model: MixtureOfMaskedNetworks, threshold: float, batch: Tuple[Tensor]
     ) -> Tuple[list, list]:
@@ -40,7 +137,7 @@ def local_model_sparsity(
 
 
 def compute_metrics(
-    model: MixtureOfMaskedNetworks, loader: DataLoader, seed: int = 0
+    model: MixtureOfMaskedNetworks, loader: DataLoader
 ):
   model.eval()
   scores = []
@@ -57,7 +154,10 @@ def compute_metrics(
 
 
 def plot_roc(
-    model: MixtureOfMaskedNetworks, loader: DataLoader, seed: int = 0
+    results_dir: str,
+    model: MixtureOfMaskedNetworks,
+    loader: DataLoader,
+    tag_number: int = 0
 ):
   fpr, tpr, thresh, auc = compute_metrics(model, loader)
 
@@ -76,12 +176,13 @@ def plot_roc(
   plt.ylabel('True Positive Rate')
   plt.title('ROC For Ground Truth Sparsity Recovery')
   plt.legend(loc="lower right")
-  plt.savefig(os.path.join(FLAGS.results_dir, 'roc_{}.pdf'.format(seed)))
+  plt.savefig(os.path.join(results_dir, 'roc_{}.pdf'.format(tag_number)))
 
 
-def plot_metrics(train_losses: list, train_aucs: list,
+def plot_metrics(results_dir: str,
+                 train_losses: list, train_aucs: list,
                  valid_losses: list, valid_aucs: list,
-                 seed: int):
+                 tag_number: int):
   import matplotlib
   matplotlib.use('Agg')
   from matplotlib import pyplot as plt
@@ -103,8 +204,8 @@ def plot_metrics(train_losses: list, train_aucs: list,
     ax_.legend()
   plt.suptitle('Learning metrics', size=16)
   plt.tight_layout()
-  plt.savefig(os.path.join(FLAGS.results_dir, 'train_metrics_{}.pdf'.format(
-    seed)))
+  plt.savefig(os.path.join(results_dir, 'train_metrics_{}.pdf'.format(
+    tag_number)))
 
 
 def main(argv):
@@ -136,13 +237,12 @@ def main(argv):
   results = dict(
     precision=defaultdict(list), recall=defaultdict(list)
   )
-  dev = 'cuda' if torch.cuda.is_available() else 'cpu'
+  # TODO(): remove
+  # dev = 'cuda' if torch.cuda.is_available() else 'cpu'
 
   FLAGS.splits = [int(split) for split in FLAGS.splits]
 
   for run in range(FLAGS.num_runs):
-    auc_tr, auc_va = [], []
-    losses_tr, losses_va = [], []
     seed = FLAGS.seed + run
     np.random.seed(seed)
 
@@ -164,79 +264,31 @@ def main(argv):
                                               drop_last=True)
     valid_loader = test_loader  # TODO(creager): don't do this
 
-    # build model and optimizer
-    model = MixtureOfMaskedNetworks(in_features=sum(FLAGS.splits),
-                                    out_features=sum(FLAGS.splits),
-                                    num_components=3,
-                                    num_hidden_layers=2,
-                                    num_hidden_units=256).to(dev)
-
-    opt = torch.optim.Adam(model.parameters(), lr=FLAGS.lr,
-                           weight_decay=FLAGS.weight_decay)
-    pred_criterion = torch.nn.MSELoss()
-    mask_criterion = torch.nn.L1Loss()
-
     # train
-
-    for epoch in range(FLAGS.num_epochs):
-      model.train()
-      total_pred_loss, total_mask_loss, total_weight_loss, total_attn_loss = \
-        (0., 0., 0., 0.)
-      for i, (x, y, _) in enumerate(train_loader):
-        pred_y, mask, attn = model.forward_with_mask(x.to(dev))
-        pred_loss = pred_criterion(y.to(dev), pred_y)
-        mask_loss = FLAGS.mask_reg * mask_criterion(
-          torch.log(1. + mask), torch.zeros_like(mask))
-        attn_loss = FLAGS.attn_reg * torch.sqrt(attn).mean()
-
-        weight_loss = 0
-        for param in model.parameters():
-          weight_loss += mask_criterion(param, torch.zeros_like(param))
-        weight_loss *= FLAGS.weight_reg
-
-        total_pred_loss += pred_loss
-        total_mask_loss += mask_loss
-        total_attn_loss += attn_loss
-        total_weight_loss += weight_loss
-
-        loss = pred_loss + mask_loss + attn_loss + weight_loss
-        model.zero_grad()
-        loss.backward()
-        opt.step()
-      if epoch % 25 == 0:
-        logging.info(
-          'Run {}, Ep. {}. Pred: {:.5f}, Mask: {:.5f}, Attn: {:.5f}, Wt: {:.5f}'
-          .format(run, epoch, total_pred_loss / i, total_mask_loss / i,
-                 total_attn_loss / i, total_weight_loss / i))
-        train_metrics = compute_metrics(model, train_loader)
-        auc_tr.append(train_metrics[-1])
-        valid_metrics = compute_metrics(model, valid_loader)
-        auc_va.append(valid_metrics[-1])
-        losses_tr.append(loss.detach().item())
-        # compute validation loss
-        model.eval()
-        valid_loss = 0.
-        for i, (x, y, _) in enumerate(valid_loader):
-          pred_y, mask, attn = model.forward_with_mask(x.to(dev))
-          pred_loss = pred_criterion(y.to(dev), pred_y)
-          mask_loss = FLAGS.mask_reg * mask_criterion(
-            torch.log(1. + mask), torch.zeros_like(mask))
-          attn_loss = FLAGS.attn_reg * torch.sqrt(attn).mean()
-
-          weight_loss = 0
-          for param in model.parameters():
-            weight_loss += mask_criterion(param, torch.zeros_like(param))
-          weight_loss *= FLAGS.weight_reg
-
-          total_pred_loss += pred_loss
-          total_mask_loss += mask_loss
-          total_attn_loss += attn_loss
-          total_weight_loss += weight_loss
-
-          valid_loss += pred_loss + mask_loss + attn_loss + weight_loss
-        valid_loss /= len(valid_loader)
-        losses_va.append(valid_loss.detach().item())
-
+    in_features = sum(FLAGS.splits)
+    out_features = sum(FLAGS.splits)
+    num_components = len(FLAGS.splits)  # TODO: make separate flag
+    num_hidden_layers = 2  # TODO: make command line arg
+    num_hidden_units = 256  # TODO: make command line arg
+    patience_epochs = None  # TODO: make command line arg
+    model, train_and_valid_metrics = train_attention_mechanism(
+      train_loader,
+      valid_loader,
+      in_features,
+      out_features,
+      num_components,
+      num_hidden_layers,
+      num_hidden_units,
+      FLAGS.lr,
+      FLAGS.weight_decay,
+      FLAGS.mask_reg,
+      FLAGS.attn_reg,
+      FLAGS.weight_reg,
+      FLAGS.num_epochs,
+      patience_epochs,
+      tag='Run %d' % run
+    )
+    losses_tr, auc_tr, losses_va, auc_va = train_and_valid_metrics
 
     # worst-case eval w.r.t. actual dynamic masks
     for tau in TAUS:
@@ -264,10 +316,10 @@ def main(argv):
       )
 
     # plot train metrics
-    plot_metrics(losses_tr, auc_tr, losses_va, auc_va, seed)
+    plot_metrics(FLAGS.results_dir, losses_tr, auc_tr, losses_va, auc_va, run)
 
     # plot ROC
-    plot_roc(model, test_loader, seed)
+    plot_roc(FLAGS.results_dir, model, test_loader, run)
 
     # # best-case eval w.r.t. the splits hyperparams (not dynamic)
     # for tau in TAUS:
