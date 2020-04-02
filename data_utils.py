@@ -81,6 +81,7 @@ class TargetGoalPos(tasks.AbstractTask):
       rew = 0.
       for i in range(self.N):
         rew += 1./self.N * (1. - max(0., dists[i] - self.eps))
+      return rew
 
   def success(self, sprites):
     return False # never terminates
