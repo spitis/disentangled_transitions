@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
   args = parser.parse_args()
 
-  file_name = f"{args.policy}_{args.reward_type}_{args.relabel_type}_{args.opt_steps_per_env_step}_{args.tag}__{args.seed}"
+  file_name = f"{args.policy}_{args.reward_type}_{args.relabel_type}_{args.opt_steps_per_env_step}_{args.batch_size}_{args.tag}__{args.seed}"
   print("---------------------------------------")
   print(f"Policy: {args.policy}, Env: Bouncing Balls, Seed: {args.seed}")
   print("---------------------------------------")

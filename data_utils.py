@@ -40,6 +40,32 @@ class PairwiseDistanceSprites(tasks.AbstractTask):
   def success(self, sprites):
     return False # never terminates
 
+class TargetGoalPos(tasks.AbstractTask):
+  """Task is to move the first N sprites to N goal poses"""
+  
+  def __init__(self, N=4, eps=0.1):
+    self.N = N
+    self.targets = np.array([[0.25, 0.25], [0.25, 0.75], [0.75, 0.25], [0.75, 0.75]])
+    self.eps = eps
+    
+  def reward(self, sprites):
+    """Computes reward from list of sprites"""
+    poses = np.array([s.position for s in sprites])
+    dists = np.linalg.norm(poses - self.targets, axis=1)
+    dists[:4-self.N] = 0
+    return float(np.all(dists < self.eps))
+    
+  def reward_of_vector_repr(self, state_vector):
+    """Computes reward on a 'VectorizedPositionsAndVelocities' format"""
+    poses = state_vector.reshape(-1, 4)[:,:2]
+    dists = np.linalg.norm(poses - self.targets, axis=1)
+    dists[:4-self.N] = 0
+    return float(np.all(dists < self.eps))
+    
+  def success(self, sprites):
+    return False # never terminates
+
+
 def make_env(num_sprites = 4, action_space = None, seed = 0,
   max_episode_length=5000, imagedim=16, reward_type='min_pairwise'):
 
@@ -97,6 +123,9 @@ def make_env(num_sprites = 4, action_space = None, seed = 0,
     task = PairwiseDistanceSprites('min')
   elif reward_type == 'max_pairwise':
     task = PairwiseDistanceSprites('max')
+  elif 'place_' in reward_type:
+    _, N = reward_type.split('_')
+    task = TargetGoalPos(N=int(N))
   else:
     raise NotImplementedError
 

@@ -1,1 +1,3 @@
-sbatch exps/cmd_v1.sh exps/test_rl_1.txt results/1/
+sbatch exps/cmd_v1.sh exps/test_rl_1.txt
+sbatch exps/cmd_v1.sh exps/test_rl_2.txt
+sbatch exps/cmd_v1.sh exps/test_rl_3.txt
