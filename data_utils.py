@@ -43,7 +43,7 @@ class PairwiseDistanceSprites(tasks.AbstractTask):
 class TargetGoalPos(tasks.AbstractTask):
   """Task is to move the first N sprites to N goal poses"""
   
-  def __init__(self, N=4, eps=0.1):
+  def __init__(self, N=4, eps=0.25):
     self.N = N
     self.targets = np.array([[0.25, 0.25], [0.25, 0.75], [0.75, 0.25], [0.75, 0.75]])
     self.eps = eps
