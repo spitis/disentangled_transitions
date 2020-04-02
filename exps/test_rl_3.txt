@@ -1,36 +1,36 @@
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 0 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 1 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 0 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 1 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 0 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 1 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 0 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 1 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 0 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 1 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 0 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 1 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 0 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 1 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 0 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 1 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 0 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 1 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --batch_size 256 --seed 0 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --batch_size 256 --seed 1 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --batch_size 512 --seed 0 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --batch_size 512 --seed 1 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 0 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 1 --reward_type sparse_2
-python train_RL_agent.py --policy TD3 --batch_size 256 --seed 0 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --batch_size 256 --seed 1 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --batch_size 512 --seed 0 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --batch_size 512 --seed 1 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 0 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 1 --reward_type sparse_3
-python train_RL_agent.py --policy TD3 --batch_size 256 --seed 0 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --batch_size 256 --seed 1 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --batch_size 512 --seed 0 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --batch_size 512 --seed 1 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 0 --reward_type sparse_4
-python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 1 --reward_type sparse_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 0 --reward_type place_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 1 --reward_type place_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 0 --reward_type place_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 1 --reward_type place_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 0 --reward_type place_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 1 --reward_type place_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 0 --reward_type place_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 1 --reward_type place_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 0 --reward_type place_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 1 --reward_type place_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 0 --reward_type place_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 1 --reward_type place_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 0 --reward_type place_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 256 --seed 1 --reward_type place_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 0 --reward_type place_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 512 --seed 1 --reward_type place_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 0 --reward_type place_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --batch_size 1024 --seed 1 --reward_type place_4
+python train_RL_agent.py --policy TD3 --batch_size 256 --seed 0 --reward_type place_2
+python train_RL_agent.py --policy TD3 --batch_size 256 --seed 1 --reward_type place_2
+python train_RL_agent.py --policy TD3 --batch_size 512 --seed 0 --reward_type place_2
+python train_RL_agent.py --policy TD3 --batch_size 512 --seed 1 --reward_type place_2
+python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 0 --reward_type place_2
+python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 1 --reward_type place_2
+python train_RL_agent.py --policy TD3 --batch_size 256 --seed 0 --reward_type place_3
+python train_RL_agent.py --policy TD3 --batch_size 256 --seed 1 --reward_type place_3
+python train_RL_agent.py --policy TD3 --batch_size 512 --seed 0 --reward_type place_3
+python train_RL_agent.py --policy TD3 --batch_size 512 --seed 1 --reward_type place_3
+python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 0 --reward_type place_3
+python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 1 --reward_type place_3
+python train_RL_agent.py --policy TD3 --batch_size 256 --seed 0 --reward_type place_4
+python train_RL_agent.py --policy TD3 --batch_size 256 --seed 1 --reward_type place_4
+python train_RL_agent.py --policy TD3 --batch_size 512 --seed 0 --reward_type place_4
+python train_RL_agent.py --policy TD3 --batch_size 512 --seed 1 --reward_type place_4
+python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 0 --reward_type place_4
+python train_RL_agent.py --policy TD3 --batch_size 1024 --seed 1 --reward_type place_4
