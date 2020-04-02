@@ -148,6 +148,49 @@ if __name__ == "__main__":
   episode_timesteps = 0
   episode_num = 0
 
+  # format attention mechanism (learned or ground truth) as callable mask fn
+  if args.relabel_type:
+    if args.relabel_type == 'ground_truth':
+      get_mask = get_true_flat_mask
+    elif args.relabel_type == 'attn_mech':
+      model_path = os.path.join(args.attn_mech_dir, 'model.p')
+      model_kwargs_path = os.path.join(args.attn_mech_dir,
+                                       'model_kwargs.json')
+      with open(model_kwargs_path) as f:
+        model_kwargs = json.load(f)
+      device = 'cuda' if torch.cuda.is_available() else 'cpu'
+      attn_mech = MixtureOfMaskedNetworks(**model_kwargs)
+      attn_mech.load_state_dict(torch.load(model_path))
+      attn_mech.to(device)
+      attn_mech.eval()
+
+      def get_mask(sprites, config, action):
+        del config  # unused
+
+        state = np.vstack(
+          [np.hstack((sprite.x, sprite.y, sprite.velocity))
+           for sprite in sprites]
+        )  # N_sprites x 4 matrix
+        state = torch.tensor(state.ravel())
+        action = torch.tensor(action)
+        state = state.unsqueeze(0)  # expand batch dim
+        action = action.unsqueeze(0)  # expand batch dim
+        model_input = torch.cat((state, action), -1)
+        model_input = model_input.to(device)
+
+        with torch.no_grad():
+          _, mask, _ = attn_mech.forward_with_mask(model_input)
+          # add dummy columns for (state, action -> next action) portion
+          mask = mask.squeeze()
+          dummy_columns = torch.zeros(len(mask), 2)
+          mask = torch.cat((mask, dummy_columns), -1)
+        mask = mask.cpu().numpy()
+        mask = (mask > args.thresh).astype(np.float32)
+        return mask
+    else:
+      raise NotImplementedError
+
+  # train agent
   for t in range(int(args.max_timesteps)):
     
     if t % args.episode_len == 0:
@@ -173,47 +216,6 @@ if __name__ == "__main__":
 
     # Do coda if enabled
     if (args.relabel_type) and (len(replay_buffer) % args.relabel_every) == 0:
-      if args.relabel_type == 'ground_truth':
-        get_mask = get_true_flat_mask
-      elif args.relabel_type == 'attn_mech':
-        model_path = os.path.join(args.attn_mech_dir, 'model.p')
-        model_kwargs_path = os.path.join(args.attn_mech_dir,
-                                         'model_kwargs.json')
-        # TODO(creager): move this function outside of for-loop?
-        with open(model_kwargs_path) as f:
-          model_kwargs = json.load(f)
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        attn_mech = MixtureOfMaskedNetworks(**model_kwargs)
-        attn_mech.load_state_dict(torch.load(model_path))
-        attn_mech.to(device)
-        attn_mech.eval()
-
-        def get_mask(sprites, config, action):
-          del config  # unused
-
-          state = np.vstack(
-            [np.hstack((sprite.x, sprite.y, sprite.velocity))
-             for sprite in sprites]
-          )  # N_sprites x 4 matrix
-          state = torch.tensor(state.ravel())
-          action = torch.tensor(action)
-          state = state.unsqueeze(0)  # expand batch dim
-          action = action.unsqueeze(0)  # expand batch dim
-          model_input = torch.cat((state, action), -1)
-          model_input = model_input.to(device)
-
-          with torch.no_grad():
-            _, mask, _ = attn_mech.forward_with_mask(model_input)
-            # add dummy columns for (state, action -> next action) portion
-            mask = mask.squeeze()
-            dummy_columns = torch.zeros(len(mask), 2)
-            mask = torch.cat((mask, dummy_columns), -1)
-          mask = mask.cpu().numpy()
-          print(mask.shape)
-          mask = (mask > args.thresh).astype(np.float32)
-          return mask
-      else:
-        raise NotImplementedError
       base_data = replay_buffer.sample_list_of_sars(args.num_pairs) #reusing numpairs here...
       sprites_for_base_data = [state_to_sprites(state) for state, _, _, _ in base_data]
 

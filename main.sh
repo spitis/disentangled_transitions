@@ -69,5 +69,5 @@ time python train_RL_agent.py \
   --num_pairs 100 \
   --coda_samples_per_pair 2 \
   --max_timesteps 3000 \
-  --relabel_type attn_mech \
+  --relabel_type ground_truth \
 
