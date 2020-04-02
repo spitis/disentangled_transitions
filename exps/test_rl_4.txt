@@ -1,0 +1,72 @@
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_sparse_1
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_sparse_1
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_sparse_1
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_sparse_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_sparse_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_sparse_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_sparse_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_sparse_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_sparse_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_sparse_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_sparse_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_sparse_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_partial_1
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_partial_1
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_partial_1
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_partial_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_partial_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_partial_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_partial_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_partial_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_partial_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_partial_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_partial_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_partial_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_dense_1
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_dense_1
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_dense_1
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_dense_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_dense_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_dense_2
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_dense_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_dense_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_dense_3
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 0 --reward_type place_dense_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 1 --reward_type place_dense_4
+python train_RL_agent.py --policy TD3 --relabel_type ground_truth --seed 2 --reward_type place_dense_4
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_sparse_1
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_sparse_1
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_sparse_1
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_sparse_2
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_sparse_2
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_sparse_2
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_sparse_3
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_sparse_3
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_sparse_3
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_sparse_4
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_sparse_4
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_sparse_4
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_partial_1
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_partial_1
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_partial_1
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_partial_2
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_partial_2
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_partial_2
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_partial_3
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_partial_3
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_partial_3
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_partial_4
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_partial_4
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_partial_4
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_dense_1
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_dense_1
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_dense_1
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_dense_2
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_dense_2
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_dense_2
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_dense_3
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_dense_3
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_dense_3
+python train_RL_agent.py --policy TD3 --seed 0 --reward_type place_dense_4
+python train_RL_agent.py --policy TD3 --seed 1 --reward_type place_dense_4
+python train_RL_agent.py --policy TD3 --seed 2 --reward_type place_dense_4

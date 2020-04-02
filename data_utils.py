@@ -3,6 +3,7 @@ import copy
 import numpy as np
 import torch
 from colour import Color
+from enum import Enum
 
 import os, sys
 sys.path.append(os.path.dirname('spritelu/'))
@@ -40,28 +41,47 @@ class PairwiseDistanceSprites(tasks.AbstractTask):
   def success(self, sprites):
     return False # never terminates
 
+class PlaceRewardType(Enum):
+  SPARSE = 0   # 1 reward if placed all balls
+  PARTIAL = 1  # 1/N reward for each ball placed on a target
+  DENSE = 2    # Sum_N  1/N - 1/N*(max(0, Euclidean distance to target - Threshold))
+
+MODES = dict(
+  sparse=PlaceRewardType.SPARSE,
+  partial=PlaceRewardType.PARTIAL,
+  dense=PlaceRewardType.DENSE
+)
 class TargetGoalPos(tasks.AbstractTask):
   """Task is to move the first N sprites to N goal poses"""
   
-  def __init__(self, N=4, eps=0.25):
+  def __init__(self, N=4, mode=PlaceRewardType.SPARSE, eps=0.25):
     self.N = N
     self.targets = np.array([[0.25, 0.25], [0.25, 0.75], [0.75, 0.25], [0.75, 0.75]])
     self.eps = eps
+    self.mode = mode
     
   def reward(self, sprites):
     """Computes reward from list of sprites"""
     poses = np.array([s.position for s in sprites])
-    dists = np.linalg.norm(poses - self.targets, axis=1)
-    dists[:4-self.N] = 0
-    return float(np.all(dists < self.eps))
+    return self.positions_to_reward(poses)
     
   def reward_of_vector_repr(self, state_vector):
     """Computes reward on a 'VectorizedPositionsAndVelocities' format"""
     poses = state_vector.reshape(-1, 4)[:,:2]
+    return self.positions_to_reward(poses)
+  
+  def positions_to_reward(self, poses):
     dists = np.linalg.norm(poses - self.targets, axis=1)
     dists[:4-self.N] = 0
-    return float(np.all(dists < self.eps))
-    
+    if self.mode == PlaceRewardType.SPARSE:
+      return float(np.all(dists < self.eps))
+    elif self.mode == PlaceRewardType.PARTIAL:
+      return ((dists < self.eps).sum() - (4. - self.N)) / self.N
+    elif self.mode == PlaceRewardType.DENSE:
+      rew = 0.
+      for i in range(self.N):
+        rew += 1./self.N * (1. - max(0., dists[i] - self.eps))
+
   def success(self, sprites):
     return False # never terminates
 
@@ -124,8 +144,8 @@ def make_env(num_sprites = 4, action_space = None, seed = 0,
   elif reward_type == 'max_pairwise':
     task = PairwiseDistanceSprites('max')
   elif 'place_' in reward_type:
-    _, N = reward_type.split('_')
-    task = TargetGoalPos(N=int(N))
+    _, mode, N = reward_type.split('_')
+    task = TargetGoalPos(mode=MODES[mode], N=int(N))
   else:
     raise NotImplementedError
 
