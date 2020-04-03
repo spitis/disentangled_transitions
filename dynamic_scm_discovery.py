@@ -14,7 +14,6 @@ import pandas as pd
 from sklearn import metrics
 import torch
 
-from static_scm_discovery import precision_recall
 from structured_transitions import gen_samples_dynamic
 from structured_transitions import MixtureOfMaskedNetworks
 from structured_transitions import TransitionsData
@@ -46,11 +45,14 @@ def train_attention_mechanism(
   del patient_epochs  # TODO(creager): use this for early stopping
   dev = 'cuda' if torch.cuda.is_available() else 'cpu'
   # build model and optimizer
-  model = MixtureOfMaskedNetworks(in_features=in_features,
-                                  out_features=out_features,
-                                  num_components=num_components,
-                                  num_hidden_layers=num_hidden_layers,
-                                  num_hidden_units=num_hidden_units).to(dev)
+  model_kwargs = dict(
+    in_features=in_features,
+    out_features=out_features,
+    num_components=num_components,
+    num_hidden_layers=num_hidden_layers,
+    num_hidden_units=num_hidden_units
+  )
+  model = MixtureOfMaskedNetworks(**model_kwargs).to(dev)
 
   opt = torch.optim.Adam(model.parameters(), lr=lr,
                          weight_decay=weight_decay)
@@ -119,7 +121,8 @@ def train_attention_mechanism(
       losses_va.append(valid_loss.detach().item())
 
   metrics = losses_tr, auc_tr, losses_va, auc_va
-  return model, metrics
+  model.eval()
+  return model, model_kwargs, metrics
 
 
 def local_model_sparsity(
@@ -237,8 +240,6 @@ def main(argv):
   results = dict(
     precision=defaultdict(list), recall=defaultdict(list)
   )
-  # TODO(): remove
-  # dev = 'cuda' if torch.cuda.is_available() else 'cpu'
 
   FLAGS.splits = [int(split) for split in FLAGS.splits]
 
@@ -271,7 +272,7 @@ def main(argv):
     num_hidden_layers = 2  # TODO: make command line arg
     num_hidden_units = 256  # TODO: make command line arg
     patience_epochs = None  # TODO: make command line arg
-    model, train_and_valid_metrics = train_attention_mechanism(
+    model, _, train_and_valid_metrics = train_attention_mechanism(
       train_loader,
       valid_loader,
       in_features,

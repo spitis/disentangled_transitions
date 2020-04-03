@@ -193,7 +193,7 @@ def relabel(args):
 
 
 def enlarge_dataset(data, sprites, config, num_pairs, relabel_samples_per_pair, flattened=True,
-                    custom_get_mask=None):
+                    custom_get_mask=None, pool=True):
   data_len = len(data)
   all_idx_pairs = np.array(np.meshgrid(np.arange(data_len), np.arange(data_len))).T.reshape(-1, 2)
   chosen_idx_pairs_idxs = np.random.choice(len(all_idx_pairs), num_pairs)
@@ -212,6 +212,11 @@ def enlarge_dataset(data, sprites, config, num_pairs, relabel_samples_per_pair, 
     args.append(
         (data[i], sprites[i], data[j], sprites[j], config, reward_fn, relabel_samples_per_pair, flattened, custom_get_mask))
 
-  with mp.Pool(min(mp.cpu_count() - 1, 16)) as pool:
-    reses = pool.map(relabel, args)
-  return sum(reses, [])
+  if pool:
+    with mp.Pool(min(mp.cpu_count() - 1, 16)) as pool:
+      reses = pool.map(relabel, args)
+  else:
+    reses = [relabel(_args) for _args in args]
+  reses = sum(reses, [])
+
+  return reses

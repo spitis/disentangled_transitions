@@ -11,14 +11,14 @@
 #  --batch_size 64 \
 #  --num_runs 1 \
 #  --logtostderr
-
-time python spriteworld_scm_discovery.py \
-  --num_epochs 50 \
-  --num_runs 2 \
-  --num_sprites 3 \
-  --batch_size 64 \
-  --num_examples 5000 \
-  --logtostderr
+#
+#time python spriteworld_scm_discovery.py \
+#  --num_epochs 50 \
+#  --num_runs 2 \
+#  --num_sprites 4 \
+#  --batch_size 64 \
+#  --num_examples 5000 \
+#  --logtostderr
 
 #time python coda_forward_model.py \
 #  --num_sprites 4 \
@@ -61,4 +61,13 @@ time python spriteworld_scm_discovery.py \
 #  --max_episode_length 500 \
 #  --results_dir $RESULTS_DIR
 #done
+
+time python train_RL_agent.py \
+  --attn_mech_dir /tmp/spriteworld_scm_discovery \
+  --relabel_every 1000 \
+  --batch_size 32 \
+  --num_pairs 100 \
+  --coda_samples_per_pair 2 \
+  --max_timesteps 3000 \
+  --relabel_type ground_truth \
 
