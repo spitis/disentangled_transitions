@@ -38,7 +38,7 @@ def main(argv):
   """Train attention mechanism on state-action tuples from spriteworld env."""
   del argv  # unused
 
-  log('results at ' + FLAGS.results_dir)
+  log(FLAGS.results_dir)
 
   if not os.path.exists(FLAGS.results_dir):
     os.makedirs(FLAGS.results_dir)

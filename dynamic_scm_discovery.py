@@ -15,6 +15,7 @@ from sklearn import metrics
 import torch
 
 from absl_utils import log
+from eval_utils import derive_acc, derive_f1
 from structured_transitions import gen_samples_dynamic
 from structured_transitions import MixtureOfMaskedNetworks
 from structured_transitions import TransitionsData
@@ -88,9 +89,11 @@ def train_attention_mechanism(
       opt.step()
     if epoch % 25 == 0:
       train_metrics = compute_metrics(model, train_loader)
-      auc_tr.append(train_metrics[-1])
+      _, _, _, tr_auc, _, _ = train_metrics
+      auc_tr.append(tr_auc)
       valid_metrics = compute_metrics(model, valid_loader)
-      auc_va.append(valid_metrics[-1])
+      _, _, _, va_auc, _, _ = train_metrics
+      auc_va.append(va_auc)
       losses_tr.append(loss.detach().item())
       # compute validation loss
       model.eval()
@@ -123,7 +126,7 @@ def train_attention_mechanism(
         'Va loss {:.5f}. Tr AUC {:.5f}. Va AUC {:.5f}'
         .format(epoch, total_pred_loss / i, total_mask_loss / i,
                total_attn_loss / i, total_weight_loss / i,
-                valid_loss, train_metrics[-1], valid_metrics[-1])
+                valid_loss, tr_auc, va_auc)
       )
 
   metrics = losses_tr, auc_tr, losses_va, auc_va
@@ -159,8 +162,9 @@ def compute_metrics(
   labels = np.hstack(labels)
   fpr, tpr, thresh = metrics.roc_curve(labels, scores)
   auc = metrics.auc(fpr, tpr)
-  # TODO(creager): add accuracy?
-  return fpr, tpr, thresh, auc
+  acc = derive_acc(fpr, tpr, labels)
+  f1 = derive_f1(fpr, tpr, labels)
+  return fpr, tpr, thresh, auc, acc, f1
 
 
 def plot_roc(
@@ -169,7 +173,7 @@ def plot_roc(
     loader: DataLoader,
     tag_number: int = 0
 ):
-  fpr, tpr, thresh, auc = compute_metrics(model, loader)
+  fpr, tpr, thresh, auc, acc, f1 = compute_metrics(model, loader)
 
   import matplotlib
   matplotlib.use('Agg')
@@ -188,6 +192,29 @@ def plot_roc(
   plt.legend(loc="lower right")
   plt.savefig(os.path.join(results_dir, 'roc_{}.pdf'.format(tag_number)))
 
+  plt.figure()
+  lw = 2
+  plt.plot(thresh, acc, color='darkorange', lw=lw, label='Acc(thresh)')
+  # plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+  # plt.xlim([0.0, 1.0])
+  plt.ylim([0.0, 1.05])
+  plt.xlabel('Thresh')
+  plt.ylabel('Accuracy')
+  plt.title('Accuracy as fn of mask threshold.')
+  plt.legend(loc="lower right")
+  plt.savefig(os.path.join(results_dir, 'acc_{}.pdf'.format(tag_number)))
+
+  plt.figure()
+  lw = 2
+  plt.plot(thresh, f1, color='darkorange', lw=lw, label='F1(thresh)')
+  # plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+  # plt.xlim([0.0, 1.0])
+  plt.ylim([0.0, 1.05])
+  plt.xlabel('Thresh')
+  plt.ylabel('F1')
+  plt.title('F1 as fn of mask threshold.')
+  plt.legend(loc="lower right")
+  plt.savefig(os.path.join(results_dir, 'f1{}.pdf'.format(tag_number)))
 
 def plot_metrics(results_dir: str,
                  train_losses: list, train_aucs: list,
