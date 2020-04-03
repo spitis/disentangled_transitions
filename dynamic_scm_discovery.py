@@ -14,6 +14,7 @@ import pandas as pd
 from sklearn import metrics
 import torch
 
+from absl_utils import log
 from structured_transitions import gen_samples_dynamic
 from structured_transitions import MixtureOfMaskedNetworks
 from structured_transitions import TransitionsData
@@ -86,11 +87,6 @@ def train_attention_mechanism(
       loss.backward()
       opt.step()
     if epoch % 25 == 0:
-      logging.info(
-        tag + ' ' +
-        'Ep. {}. Pred: {:.5f}, Mask: {:.5f}, Attn: {:.5f}, Wt: {:.5f}'
-        .format(epoch, total_pred_loss / i, total_mask_loss / i,
-               total_attn_loss / i, total_weight_loss / i))
       train_metrics = compute_metrics(model, train_loader)
       auc_tr.append(train_metrics[-1])
       valid_metrics = compute_metrics(model, valid_loader)
@@ -111,14 +107,24 @@ def train_attention_mechanism(
           weight_loss += mask_criterion(param, torch.zeros_like(param))
         weight_loss *= weight_reg
 
-        total_pred_loss += pred_loss
-        total_mask_loss += mask_loss
-        total_attn_loss += attn_loss
-        total_weight_loss += weight_loss
+        # TODO: remove
+        # total_pred_loss += pred_loss
+        # total_mask_loss += mask_loss
+        # total_attn_loss += attn_loss
+        # total_weight_loss += weight_loss
 
         valid_loss += pred_loss + mask_loss + attn_loss + weight_loss
       valid_loss /= len(valid_loader)
-      losses_va.append(valid_loss.detach().item())
+      valid_loss = valid_loss.detach().item()
+      losses_va.append(valid_loss)
+      log(
+        tag + ' ' +
+        'Ep. {}. Pred: {:.5f}, Mask: {:.5f}, Attn: {:.5f}, Wt: {:.5f} '
+        'Va loss {:.5f}. Tr AUC {:.5f}. Va AUC {:.5f}'
+        .format(epoch, total_pred_loss / i, total_mask_loss / i,
+               total_attn_loss / i, total_weight_loss / i,
+                valid_loss, train_metrics[-1], valid_metrics[-1])
+      )
 
   metrics = losses_tr, auc_tr, losses_va, auc_va
   model.eval()
@@ -153,6 +159,7 @@ def compute_metrics(
   labels = np.hstack(labels)
   fpr, tpr, thresh = metrics.roc_curve(labels, scores)
   auc = metrics.auc(fpr, tpr)
+  # TODO(creager): add accuracy?
   return fpr, tpr, thresh, auc
 
 
@@ -203,7 +210,7 @@ def plot_metrics(results_dir: str,
   ax[0].set_ylabel('Task loss', size=16)
   ax[1].set_ylabel('Attention AUC', size=16)
   for ax_ in ax:
-    ax_.set_xlabel('Epochs', size=16)
+    ax_.set_xlabel('25s of Epochs', size=16)
     ax_.legend()
   plt.suptitle('Learning metrics', size=16)
   plt.tight_layout()
@@ -251,8 +258,8 @@ def main(argv):
     global_interactions, fns, samples = gen_samples_dynamic(
       num_seqs=FLAGS.num_seqs, seq_len=FLAGS.seq_len, splits=FLAGS.splits,
       epsilon=FLAGS.epsilon)
-    logging.info('Total global interactions: {}/{}'
-                 .format(global_interactions, len(samples[0])))
+    log('Total global interactions: {}/{}'
+        .format(global_interactions, len(samples[0])))
     dataset = TransitionsData(samples)
     tr = TransitionsData(dataset[:int(len(dataset) * 5 / 6)])
     te = TransitionsData(dataset[int(len(dataset) * 5 / 6):])
@@ -334,7 +341,7 @@ def main(argv):
     #   results['precision'][tau].append(best_precision)
     #   results['recall'][tau].append(best_recall)
 
-  logging.info('results:\n' + pformat(results, indent=2))
+  log('results:\n' + pformat(results, indent=2))
 
   # format results as tex via pandas
   results_df = pd.DataFrame.from_dict(results)
@@ -349,7 +356,7 @@ def main(argv):
     formatters=formatters, escape=False, label='tab:dynamic', index=False,
     column_format='|r|l|l|'
   )
-  logging.info('tex table:\n' + results_tex)
+  log('tex table:\n' + results_tex)
 
   # save results (in various formats) to disk
   results.update(taus=TAUS.tolist())  # don't do this before pd.DataFrame init
@@ -365,7 +372,7 @@ def main(argv):
   with open(os.path.join(FLAGS.results_dir, 'results.p'), 'wb') as f:
     pickle.dump(results, f)
 
-  logging.info('done')
+  log('done')
 
 
 if __name__ == "__main__":

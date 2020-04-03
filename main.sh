@@ -12,12 +12,13 @@
 #  --num_runs 1 \
 #  --logtostderr
 #
-#time python spriteworld_scm_discovery.py \
-#  --num_epochs 50 \
-#  --num_runs 2 \
-#  --num_sprites 4 \
-#  --batch_size 64 \
-#  --num_examples 5000 \
+time python spriteworld_scm_discovery.py \
+  --num_epochs 100 \
+  --num_runs 5 \
+  --num_sprites 4 \
+  --batch_size 256 \
+  --num_examples 50000 \
+  --results_dir /scratch/gobi1/creager/disentangled_transitions/spriteworld_scm_discovery
 #  --logtostderr
 
 #time python coda_forward_model.py \
@@ -62,12 +63,12 @@
 #  --results_dir $RESULTS_DIR
 #done
 
-time python train_RL_agent.py \
-  --attn_mech_dir /tmp/spriteworld_scm_discovery \
-  --relabel_every 1000 \
-  --batch_size 32 \
-  --num_pairs 100 \
-  --coda_samples_per_pair 2 \
-  --max_timesteps 3000 \
-  --relabel_type ground_truth \
+#time python train_RL_agent.py \
+#  --attn_mech_dir /tmp/spriteworld_scm_discovery \
+#  --relabel_every 1000 \
+#  --batch_size 32 \
+#  --num_pairs 100 \
+#  --coda_samples_per_pair 2 \
+#  --max_timesteps 3000 \
+#  --relabel_type ground_truth \
 

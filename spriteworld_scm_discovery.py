@@ -14,6 +14,7 @@ import pandas as pd
 from sklearn import metrics
 import torch
 
+from absl_utils import log
 from coda import get_true_flat_mask
 from data_utils import create_factorized_dataset
 from data_utils import make_env
@@ -36,6 +37,8 @@ DEV = 'cuda' if torch.cuda.is_available() else 'cpu'
 def main(argv):
   """Train attention mechanism on state-action tuples from spriteworld env."""
   del argv  # unused
+
+  log('results at ' + FLAGS.results_dir)
 
   if not os.path.exists(FLAGS.results_dir):
     os.makedirs(FLAGS.results_dir)
@@ -191,7 +194,7 @@ def main(argv):
     #   results['precision'][tau].append(best_precision)
     #   results['recall'][tau].append(best_recall)
 
-  logging.info('results:\n' + pformat(results, indent=2))
+  log('results:\n' + pformat(results, indent=2))
 
   # format results as tex via pandas
   results_df = pd.DataFrame.from_dict(results)
@@ -206,7 +209,7 @@ def main(argv):
     formatters=formatters, escape=False, label='tab:dynamic', index=False,
     column_format='|r|l|l|'
   )
-  logging.info('tex table:\n' + results_tex)
+  log('tex table:\n' + results_tex)
 
   # save results (in various formats) to disk
   results.update(taus=TAUS.tolist())  # don't do this before pd.DataFrame init
@@ -228,7 +231,7 @@ def main(argv):
 
   torch.save(model.state_dict(), os.path.join(FLAGS.results_dir, 'model.p'))
 
-  logging.info('done')
+  log('done')
 
 
 if __name__ == "__main__":

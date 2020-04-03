@@ -82,6 +82,7 @@ def main(argv):
   FLAGS.splits = [int(split) for split in FLAGS.splits]
 
   for run in range(FLAGS.num_runs):
+    logging.info('Run %d' % run)
     np.random.seed(FLAGS.seed + run)
 
     # create observational data
@@ -97,6 +98,7 @@ def main(argv):
     test_loader = torch.utils.data.DataLoader(
       te, batch_size=FLAGS.batch_size, shuffle=False, num_workers=2,
       drop_last=True)
+    logging.info('Data created.')
 
     # build model and optimizer
     model = MaskedNetwork(in_features=sum(FLAGS.splits),
