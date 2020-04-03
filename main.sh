@@ -11,15 +11,20 @@
 #  --batch_size 64 \
 #  --num_runs 1 \
 #  --logtostderr
-#
-time python spriteworld_scm_discovery.py \
-  --num_epochs 100 \
-  --num_runs 5 \
-  --num_sprites 4 \
-  --batch_size 256 \
-  --num_examples 50000 \
-  --results_dir /scratch/gobi1/creager/disentangled_transitions/spriteworld_scm_discovery
-#  --logtostderr
+##
+#time python spriteworld_scm_discovery.py \
+#  --num_epochs 50 \
+#  --num_runs 1 \
+#  --num_sprites 4 \
+#  --batch_size 256 \
+#  --num_examples 50000 \
+#  --mask_reg 2e-3 \
+#  --weight_reg 1e-5 \
+#  --attn_reg 3e-4 \
+#  --weight_decay 0. \
+#  --mask_reg 2e-3 \
+#  --results_dir /scratch/gobi1/creager/disentangled_transitions/maybe_good_attn_scratch
+##  --logtostderr
 
 #time python coda_forward_model.py \
 #  --num_sprites 4 \
@@ -71,4 +76,13 @@ time python spriteworld_scm_discovery.py \
 #  --coda_samples_per_pair 2 \
 #  --max_timesteps 3000 \
 #  --relabel_type ground_truth \
+#  --results_dir /tmp/train_RL_agent \
+#  --save_model
 
+#python eval_utils.py
+
+for thresh in 0. 0.1 0.2 0.3 0.4 0.5 0.6
+do
+  time python rollouts_with_attn.py \
+    --thresh $thresh
+done
