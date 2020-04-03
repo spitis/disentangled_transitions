@@ -131,6 +131,7 @@ def train_attention_mechanism(
 
   metrics = losses_tr, auc_tr, losses_va, auc_va
   model.eval()
+  model.to('cpu')
   return model, model_kwargs, metrics
 
 
