@@ -160,7 +160,8 @@ if __name__ == "__main__":
                                        'model_kwargs.json')
       with open(model_kwargs_path) as f:
         model_kwargs = json.load(f)
-      device = 'cuda' if torch.cuda.is_available() else 'cpu'
+      # device = 'cuda' if torch.cuda.is_available() else 'cpu'
+      device = 'cpu'
       attn_mech = MixtureOfMaskedNetworks(**model_kwargs)
       attn_mech.load_state_dict(torch.load(model_path))
       attn_mech.to(device)
