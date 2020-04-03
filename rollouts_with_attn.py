@@ -107,7 +107,7 @@ if __name__ == "__main__":
   attn_mech.eval()
 
   # write movie of actual environment rollouts
-  plot_kwargs = dict(show_resets=True, show_clicks=True)
+  plot_kwargs = dict(show_resets=True, show_clicks=True, fps=FLAGS.fps)
   basename = 'rollouts_with_attn_thresh_{}.mp4'.format(FLAGS.thresh)
   res = anim_with_attn(env,
                        attn_mech,
