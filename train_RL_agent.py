@@ -84,6 +84,7 @@ if __name__ == "__main__":
   parser.add_argument('--coda_samples_per_pair', type=int, default=5, help='Number of relabels per transition pairs.')
   parser.add_argument('--opt_steps_per_env_step', type=int, default=1)
   parser.add_argument('--tag', type=str, default='')
+  parser.add_argument('--results_dir', type=str, default='.')
   parser.add_argument("--thresh", default=0.1, type=float, help='Threshold on attention mask')
 
   args = parser.parse_args()
@@ -93,11 +94,12 @@ if __name__ == "__main__":
   print(f"Policy: {args.policy}, Env: Bouncing Balls, Seed: {args.seed}")
   print("---------------------------------------")
 
-  if not os.path.exists("./results"):
-    os.makedirs("./results")
+  if not os.path.exists(os.path.join(args.results_dir, 'results')):
+    os.makedirs(os.path.join(args.results_dir, 'results'))
 
-  if args.save_model and not os.path.exists("./models"):
-    os.makedirs("./models")
+  if args.save_model and not os.path.exists(os.path.join(args.results_dir,
+                                                         'models')):
+    os.makedirs(os.path.join(args.results_dir, 'models'))
 
   config, original_env = make_env(
     num_sprites=args.num_sprites, reward_type=args.reward_type)
@@ -270,9 +272,9 @@ if __name__ == "__main__":
     if (t + 1) % args.eval_freq == 0:
       evaluations.append(eval_policy(policy, args.seed, args.num_sprites, eval_episodes=eval_episodes, reward_type=args.reward_type))
       print(f"Time {t+1} -- Evaluation over {eval_episodes} episodes: {evaluations[-1]:.3f} --- coda_buffer length: {len(coda_buffer)}")
-      np.save(f"./results/{file_name}", evaluations)
+      np.save(f"{args.results_dir}/results/{file_name}", evaluations)
       if args.save_model: 
-        policy.save(f"./models/{file_name}")
+        policy.save(f"{args.results_dir}/models/{file_name}")
       if args.save_replay:
-        with open(f"./models/{file_name}_replay.pickle", 'wb') as f:
+        with open(f"{args.results_dir}/models/{file_name}_replay.pickle", 'wb') as f:
           pickle.dump(replay_buffer, f)
