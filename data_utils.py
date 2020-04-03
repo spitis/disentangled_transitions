@@ -79,7 +79,7 @@ class TargetGoalPos(tasks.AbstractTask):
       return ((dists < self.eps).sum() - (4. - self.N)) / self.N
     elif self.mode == PlaceRewardType.DENSE:
       rew = 0.
-      for i in range(self.N):
+      for i in range(3, 3 - self.N, -1):
         rew += 1./self.N * (1. - max(0., dists[i] - self.eps))
       return rew
 
