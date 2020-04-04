@@ -9,7 +9,7 @@ import torch
 
 from data_utils import make_env
 from plot_utils import anim_with_attn
-from structured_transitions import MixtureOfMaskedNetworks
+from structured_transitions import MixtureOfMaskedNetworks, SimpleStackedAttn
 
 
 if __name__ == "__main__":
@@ -43,7 +43,7 @@ if __name__ == "__main__":
                       help='Max length of an episode.')
   parser.add_argument('--model_type',
                       type=str,
-                      default='linear',
+                      default='MME',
                       help='Type of dynamics model.')
   parser.add_argument('--attn_mech_dir',
                       type=str,
@@ -101,7 +101,13 @@ if __name__ == "__main__":
     model_kwargs = json.load(f)
   # device = 'cuda' if torch.cuda.is_available() else 'cpu'
   device = 'cpu'
-  attn_mech = MixtureOfMaskedNetworks(**model_kwargs)
+  if FLAGS.model_type == 'MME':
+    attn_mech = MixtureOfMaskedNetworks(**model_kwargs)
+  elif FLAGS.model_type == 'SSA':
+    attn_mech = SimpleStackedAttn(**model_kwargs)
+  else:
+    raise NotImplementedError
+  
   attn_mech.load_state_dict(torch.load(model_path))
   attn_mech.to(device)
   attn_mech.eval()

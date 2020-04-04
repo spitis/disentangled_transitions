@@ -5,3 +5,4 @@ __pycache__
 res/*
 results/*
 models/*
+attn_mech_dir/*

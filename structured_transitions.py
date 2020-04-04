@@ -83,6 +83,90 @@ class MixtureOfMaskedNetworks(nn.Module):
 
     return res, mask, attns
 
+class SimpleMLP(nn.Module):
+  def __init__(self, layers):
+    super().__init__()
+    layer_list = []
+    for i, o in zip(layers[:-1], layers[1:]):
+      layer_list += [nn.Linear(i, o), nn.ReLU()]
+    layer_list = layer_list[:-1]
+    self.f = nn.Sequential(*layer_list)
+    
+  def forward(self, x):
+    return self.f(x)
+  
+class SimpleAttn(nn.Module):
+  def __init__(self, embed_layers, attn_layers):
+    super().__init__()
+    assert(embed_layers[0] == attn_layers[0])
+    
+    attn_layers = tuple(attn_layers[:-1]) + (2*attn_layers[-1],)
+    
+    self.embed = SimpleMLP(embed_layers)
+    self.KQ = SimpleMLP(attn_layers)
+    
+  def forward(self, x):
+    return self.forward_with_mask(x)[0]
+  
+  def forward_with_mask(self, x):
+    embs = self.embed(x)
+    K, Q = torch.chunk(self.KQ(x), chunks=2, dim=2)
+    A = F.softmax(Q.bmm(K.transpose(1,2)), 2)
+    
+    output = A.bmm(embs) # + embs
+    mask = A # + torch.eye(A.size(2), device=A.device)
+    return output, mask
+  
+class SimpleStackedAttn(nn.Module):
+  def __init__(self, in_features, out_features, num_components=2, num_hidden_layers=2, num_hidden_units=256):
+    """
+    Arg names chosen to match MixtureOfMaskNetworks, so this can be dropped in
+    """
+    num_blocks = num_components
+
+    super().__init__()
+    blocks = [SimpleAttn(
+      (in_features,) + (num_hidden_units,)*num_hidden_layers, (in_features,) + (num_hidden_units,)*num_hidden_layers)]
+    for block in range(num_blocks-1):
+      blocks.append(SimpleAttn((num_hidden_units,)*(1 + num_hidden_layers),(num_hidden_units,)*(1 + num_hidden_layers)))
+    output_projection = nn.Linear(num_hidden_units, out_features)
+    self.f = nn.Sequential(*blocks, output_projection)
+
+    self.in_features = in_features
+    self.num_state_slots = None
+    
+  def forward(self, x):
+    return self.f(x)
+  
+  def forward_with_mask(self, x):
+    """x is assumed to be a state + action, where state = (slot,)*num_slots, and action_dim < slot_dim"""
+
+    # Automatically reshape x into slots
+    x_dim = x.shape[-1]
+    num_slots, action_dim = x_dim // self.in_features, x_dim % self.in_features
+    x = torch.cat((  x, torch.zeros((x.shape[0], self.in_features - action_dim), device=x.device)  ), 1)
+    x = x.reshape(x.shape[0], num_slots + 1, self.in_features)
+
+    mask = torch.eye(x.size(1), device=x.device)[None].repeat(x.size(0), 1, 1)
+    # masks = [mask]
+    for module in self.f:
+      if type(module) is SimpleAttn:
+        x, m = module.forward_with_mask(x)
+        # masks.append(m)
+        mask = mask.bmm(m.transpose(1,2))
+      else:
+        x = module(x)
+
+    # result is shaped by slot, so flatten it
+    x = x[:, :num_slots, :]
+    x = x.reshape(x.shape[0], -1)
+
+    # expand the mask
+    mask = mask[:, :-1, :]
+    mask = mask.repeat_interleave(self.in_features, 1).repeat_interleave(self.in_features, 2)
+    mask = mask[:, :, :x_dim].transpose(1,2)
+
+    return x, mask, torch.zeros_like(x) # The zeros is because the other MixtureOfMaskedNetwork returns attns
 
 def gen_samples_static(num_seqs=16, seq_len=12, splits=[5, 3, 2]):
   """
