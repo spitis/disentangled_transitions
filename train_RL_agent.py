@@ -8,6 +8,8 @@ import json
 import os
 import pickle
 from data_utils import make_env, SpriteMaker
+from functools import partial
+import time
 
 from agents import utils
 from agents import TD3
@@ -17,6 +19,41 @@ from coda import get_true_abstract_mask, get_true_flat_mask, get_random_flat_mas
 from coda import enlarge_dataset
 from structured_transitions import MixtureOfMaskedNetworks, SimpleStackedAttn
 
+""" MULTIPROCESSING STUFF """
+import torch.multiprocessing as mp
+if __name__ == '__main__':
+  mp.set_start_method('spawn')
+
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+MODEL = None
+
+
+def model_get_mask(sprites, config, action, MODEL, THRESH):
+  del config  # unused
+  global DEVICE
+
+  state = np.vstack(
+    [np.hstack((sprite.x, sprite.y, sprite.velocity))
+      for sprite in sprites]
+  )  # N_sprites x 4 matrix
+  state = torch.FloatTensor(state.ravel())
+  action = torch.FloatTensor(action)
+  state = state.unsqueeze(0)  # expand batch dim
+  action = action.unsqueeze(0)  # expand batch dim
+  model_input = torch.cat((state, action), -1)
+  model_input = model_input.to(DEVICE)
+
+  with torch.no_grad():
+    _, mask, _ = MODEL.forward_with_mask(model_input)
+    # add dummy columns for (state, action -> next action) portion
+    mask = mask.squeeze().cpu()
+    dummy_columns = torch.zeros(len(mask), 2)
+    mask = torch.cat((mask, dummy_columns), -1)
+  mask = mask.cpu().numpy()
+  mask = (mask > THRESH).astype(np.float32)
+  return mask
+
+""" END MULTIPROCESSING STUFF """
 
 
 # Runs policy for X episodes and returns average reward
@@ -86,6 +123,7 @@ if __name__ == "__main__":
   parser.add_argument('--tag', type=str, default='')
   parser.add_argument('--results_dir', type=str, default='.')
   parser.add_argument("--thresh", default=0.1, type=float, help='Threshold on attention mask')
+  parser.add_argument("--max_cpu", default=8, type=int, help='CPUs to use')
 
   args = parser.parse_args()
 
@@ -144,6 +182,7 @@ if __name__ == "__main__":
   eval_episodes = 50
   # Evaluate untrained policy
   evaluations = [eval_policy(policy, args.seed, args.num_sprites, eval_episodes=eval_episodes, reward_type=args.reward_type)]
+  TIME = time.time()
   print(f"Time 0 -- Evaluation over {eval_episodes} episodes: {evaluations[-1]:.3f} --- coda_buffer length: {len(coda_buffer)}")
 
   episode_reward = 0
@@ -160,42 +199,22 @@ if __name__ == "__main__":
                                        'model_kwargs.json')
       with open(model_kwargs_path) as f:
         model_kwargs = json.load(f)
-      # device = 'cuda' if torch.cuda.is_available() else 'cpu'
-      device = 'cpu'
+      device = 'cuda' if torch.cuda.is_available() else 'cpu'
+      #device = 'cpu'
 
       # A hack for now... 
       if model_kwargs['in_features'] == 4:
-        model = SimpleStackedAttn(**model_kwargs).to(dev)
+        attn_mech = SimpleStackedAttn(**model_kwargs).to(device)
       else:
-        model = MixtureOfMaskedNetworks(**model_kwargs).to(dev)
+        attn_mech = MixtureOfMaskedNetworks(**model_kwargs).to(device)
 
       attn_mech.load_state_dict(torch.load(model_path))
       attn_mech.to(device)
       attn_mech.eval()
 
-      def get_mask(sprites, config, action):
-        del config  # unused
+      MODEL = attn_mech
 
-        state = np.vstack(
-          [np.hstack((sprite.x, sprite.y, sprite.velocity))
-           for sprite in sprites]
-        )  # N_sprites x 4 matrix
-        state = torch.tensor(state.ravel())
-        action = torch.tensor(action)
-        state = state.unsqueeze(0)  # expand batch dim
-        action = action.unsqueeze(0)  # expand batch dim
-        model_input = torch.cat((state, action), -1)
-        model_input = model_input.to(device)
-
-        with torch.no_grad():
-          _, mask, _ = attn_mech.forward_with_mask(model_input)
-          # add dummy columns for (state, action -> next action) portion
-          mask = mask.squeeze()
-          dummy_columns = torch.zeros(len(mask), 2)
-          mask = torch.cat((mask, dummy_columns), -1)
-        mask = mask.cpu().numpy()
-        mask = (mask > args.thresh).astype(np.float32)
-        return mask
+      get_mask = partial(model_get_mask, MODEL=MODEL, THRESH=args.thresh)
     else:
       raise NotImplementedError
 
@@ -232,7 +251,7 @@ if __name__ == "__main__":
       og_state_set = set([tuple(a) for a in lst])
 
 
-      pool = args.relabel_type != 'attn_mech'  # attn mechanism doesn't pool
+      pool = True #args.relabel_type != 'attn_mech'  # attn mechanism doesn't pool
       coda_data = enlarge_dataset(base_data,
                                   sprites_for_base_data,
                                   config,
@@ -240,7 +259,8 @@ if __name__ == "__main__":
                                   args.coda_samples_per_pair,
                                   flattened=True,
                                   custom_get_mask=get_mask,
-                                  pool=pool)
+                                  pool=pool,
+                                  max_cpus = 15 if not args.relabel_type == 'attn_mech' else args.max_cpu)
 
       # remove duplicates of original data
       coda_data = [(s, a, r, s2) for s, a, r, s2 in coda_data if not tuple(s.round(2)) in og_state_set]
@@ -278,7 +298,8 @@ if __name__ == "__main__":
     # Evaluate episode
     if (t + 1) % args.eval_freq == 0:
       evaluations.append(eval_policy(policy, args.seed, args.num_sprites, eval_episodes=eval_episodes, reward_type=args.reward_type))
-      print(f"Time {t+1} -- Evaluation over {eval_episodes} episodes: {evaluations[-1]:.3f} --- coda_buffer length: {len(coda_buffer)}")
+      print(f"Time {t+1} -- Evaluation over {eval_episodes} episodes: {evaluations[-1]:.3f} --- coda_buffer length: {len(coda_buffer)}  ---- time: {time.time() - TIME}s")
+      TIME = time.time()
       np.save(f"{args.results_dir}/results/{file_name}", evaluations)
       if args.save_model: 
         policy.save(f"{args.results_dir}/models/{file_name}")
