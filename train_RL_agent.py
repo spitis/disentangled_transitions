@@ -193,7 +193,7 @@ if __name__ == "__main__":
   if args.relabel_type:
     if args.relabel_type == 'ground_truth':
       get_mask = get_true_flat_mask
-    elif args.relabel_type == 'attn_mech':
+    elif args.relabel_type == 'attn_mech' or args.relabel_type == 'dyna':
       model_path = os.path.join(args.attn_mech_dir, 'model.p')
       model_kwargs_path = os.path.join(args.attn_mech_dir,
                                        'model_kwargs.json')
@@ -245,31 +245,50 @@ if __name__ == "__main__":
     # Store data in replay buffer
     replay_buffer.add(state, action, next_state, reward, done_bool)
 
-    # Do coda if enabled
+    # Do coda Or model-based sampling if enabled
     if (args.relabel_type) and (len(replay_buffer) % args.relabel_every) == 0:
-      base_data = replay_buffer.sample_list_of_sars(args.num_pairs) #reusing numpairs here...
-      sprites_for_base_data = [state_to_sprites(state) for state, _, _, _ in base_data]
+      if args.relabel_type == 'dyna':
+        reward_fn = config['task'].reward_of_vector_repr
+        state, _, _, _, _ = replay_buffer.sample(args.num_pairs) #reusing numpairs here...
+        for _ in range(args.coda_samples_per_pair): # do a forward rollout
+          action = [env.action_space.sample() for _ in range(len(state))]
+          action = torch.FloatTensor(action).to(device)
+          sa = torch.cat((state, action), 1)
+          s2, _, _ = MODEL.forward_with_mask(sa.to(device))
 
-      lst = [state.round(2) for state, _, _, _ in base_data]
-      og_state_set = set([tuple(a) for a in lst])
+          np_s  = state.cpu().numpy()
+          np_a  = action.cpu().numpy()
+          np_s2 = s2.cpu().detach().numpy()
+
+          state = s2.detach()
+          
+          for _s, _a, _s2 in zip(np_s, np_a, np_s2):
+            coda_buffer.add(_s, _a, _s2, reward_fn(_s2), 0)
+          
+      else:
+        base_data = replay_buffer.sample_list_of_sars(args.num_pairs) #reusing numpairs here...
+        sprites_for_base_data = [state_to_sprites(state) for state, _, _, _ in base_data]
+
+        lst = [state.round(2) for state, _, _, _ in base_data]
+        og_state_set = set([tuple(a) for a in lst])
 
 
-      pool = True #args.relabel_type != 'attn_mech'  # attn mechanism doesn't pool
-      coda_data = enlarge_dataset(base_data,
-                                  sprites_for_base_data,
-                                  config,
-                                  args.num_pairs,
-                                  args.coda_samples_per_pair,
-                                  flattened=True,
-                                  custom_get_mask=get_mask,
-                                  pool=pool,
-                                  max_cpus = 15 if not args.relabel_type == 'attn_mech' else args.max_cpu)
+        pool = True #args.relabel_type != 'attn_mech'  # attn mechanism doesn't pool
+        coda_data = enlarge_dataset(base_data,
+                                    sprites_for_base_data,
+                                    config,
+                                    args.num_pairs,
+                                    args.coda_samples_per_pair,
+                                    flattened=True,
+                                    custom_get_mask=get_mask,
+                                    pool=pool,
+                                    max_cpus = 15 if not args.relabel_type == 'attn_mech' else args.max_cpu)
 
-      # remove duplicates of original data
-      coda_data = [(s, a, r, s2) for s, a, r, s2 in coda_data if not tuple(s.round(2)) in og_state_set]
+        # remove duplicates of original data
+        coda_data = [(s, a, r, s2) for s, a, r, s2 in coda_data if not tuple(s.round(2)) in og_state_set]
 
-      for (s, a, r, s2) in coda_data:
-        coda_buffer.add(s, a, s2, r, 0) # note weird add order. 
+        for (s, a, r, s2) in coda_data:
+          coda_buffer.add(s, a, s2, r, 0) # note weird add order. 
 
     state = next_state
     episode_reward += reward
