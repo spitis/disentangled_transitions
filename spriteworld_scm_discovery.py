@@ -124,11 +124,21 @@ def main(argv):
     # train
     num_action_features = 2
     num_state_features = FLAGS.num_sprites * 4
-    in_features = num_state_features + num_action_features
-    out_features = num_state_features
-    num_components = FLAGS.num_sprites  # TODO: make separate flag
+    if FLAGS.model_type == 'MMN':
+      in_features = num_state_features + num_action_features
+      out_features = num_state_features
+      num_components = FLAGS.num_sprites  # TODO: make separate flag
+      num_hidden_units = 256  # TODO: make command line arg
+    elif FLAGS.model_type == 'SSA':
+      in_features = 4
+      out_features = 4
+      num_components = 2  # TODO: make separate flag
+      num_hidden_units = 512  # TODO: make command line arg
+    else:
+      msg = 'Unsupported model type. Got %s. Expected MMN or SSA.' % \
+            FLAGS.model_type
+      raise ValueError(msg)
     num_hidden_layers = 2  # TODO: make command line arg
-    num_hidden_units = 256  # TODO: make command line arg
     patience_epochs = None  # TODO: make command line arg
     model, model_kwargs, train_and_valid_metrics = train_attention_mechanism(
       train_loader,
@@ -256,6 +266,7 @@ if __name__ == "__main__":
   flags.DEFINE_integer('patience_epochs', 20, 'Stop early after this many '
                                               'epochs of unimproved '
                                               'validation loss.')
+  flags.DEFINE_string('model_type', 'MMN', 'Type of attn mech.')
   # flags.DEFINE_list('splits', [3, 3, 3], 'Dimensions per state factor.')
   flags.DEFINE_boolean('verbose', False, 'If True, prints log info to std out.')
   flags.DEFINE_string(

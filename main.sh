@@ -12,19 +12,21 @@
 #  --num_runs 1 \
 #  --logtostderr
 ##
-#time python spriteworld_scm_discovery.py \
-#  --num_epochs 50 \
-#  --num_runs 1 \
-#  --num_sprites 4 \
-#  --batch_size 256 \
-#  --num_examples 50000 \
-#  --mask_reg 2e-3 \
-#  --weight_reg 1e-5 \
-#  --attn_reg 3e-4 \
-#  --weight_decay 0. \
-#  --mask_reg 2e-3 \
-#  --results_dir /scratch/gobi1/creager/disentangled_transitions/maybe_good_attn_scratch
-##  --logtostderr
+MODEL_TYPE=SSA
+#MODEL_TYPE=MMN
+time python spriteworld_scm_discovery.py \
+  --num_epochs 50 \
+  --num_runs 1 \
+  --num_sprites 4 \
+  --batch_size 256 \
+  --num_examples 5000 \
+  --mask_reg 2e-3 \
+  --weight_reg 1e-5 \
+  --attn_reg 3e-4 \
+  --weight_decay 0. \
+  --mask_reg 2e-3 \
+  --model_type $MODEL_TYPE \
+  --results_dir /scratch/gobi1/creager/disentangled_transitions/attn_$MODEL_TYPE
 
 #time python coda_forward_model.py \
 #  --num_sprites 4 \
@@ -81,8 +83,8 @@
 
 #python eval_utils.py
 
-for thresh in 0. 0.1 0.2 0.3 0.4 0.5 0.6
-do
-  time python rollouts_with_attn.py \
-    --thresh $thresh
-done
+#for thresh in 0. 0.1 0.2 0.3 0.4 0.5 0.6
+#do
+#  time python rollouts_with_attn.py \
+#    --thresh $thresh
+#done
