@@ -15,7 +15,7 @@ from agents import DDPG
 
 from coda import get_true_abstract_mask, get_true_flat_mask, get_random_flat_mask, get_fully_connected_mask
 from coda import enlarge_dataset
-from structured_transitions import MixtureOfMaskedNetworks
+from structured_transitions import MixtureOfMaskedNetworks, SimpleStackedAttn
 
 
 
@@ -162,7 +162,13 @@ if __name__ == "__main__":
         model_kwargs = json.load(f)
       # device = 'cuda' if torch.cuda.is_available() else 'cpu'
       device = 'cpu'
-      attn_mech = MixtureOfMaskedNetworks(**model_kwargs)
+
+      # A hack for now... 
+      if model_kwargs['in_features'] == 4:
+        model = SimpleStackedAttn(**model_kwargs).to(dev)
+      else:
+        model = MixtureOfMaskedNetworks(**model_kwargs).to(dev)
+
       attn_mech.load_state_dict(torch.load(model_path))
       attn_mech.to(device)
       attn_mech.eval()

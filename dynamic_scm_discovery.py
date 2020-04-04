@@ -17,7 +17,7 @@ import torch
 from absl_utils import log
 from eval_utils import derive_acc, derive_f1
 from structured_transitions import gen_samples_dynamic
-from structured_transitions import MixtureOfMaskedNetworks
+from structured_transitions import MixtureOfMaskedNetworks, SimpleStackedAttn
 from structured_transitions import TransitionsData
 
 Array = np.ndarray
@@ -54,7 +54,12 @@ def train_attention_mechanism(
     num_hidden_layers=num_hidden_layers,
     num_hidden_units=num_hidden_units
   )
-  model = MixtureOfMaskedNetworks(**model_kwargs).to(dev)
+
+  # A hack for now... 
+  if in_features == 4:
+    model = SimpleStackedAttn(**model_kwargs).to(dev)
+  else:
+    model = MixtureOfMaskedNetworks(**model_kwargs).to(dev)
 
   opt = torch.optim.Adam(model.parameters(), lr=lr,
                          weight_decay=weight_decay)
@@ -136,10 +141,10 @@ def train_attention_mechanism(
 
 
 def local_model_sparsity(
-      model: MixtureOfMaskedNetworks, threshold: float, batch: Tuple[Tensor]
+      model, threshold: float, batch: Tuple[Tensor]
     ) -> Tuple[list, list]:
     x, _, ground_truth_sparsity = batch
-    assert isinstance(model, MixtureOfMaskedNetworks), 'bad model'
+
     _, mask, _ = model.forward_with_mask(x.to(DEV))
     mask[mask < threshold] = 0
     mask = torch.where(mask > threshold,
@@ -150,7 +155,7 @@ def local_model_sparsity(
 
 
 def compute_metrics(
-    model: MixtureOfMaskedNetworks, loader: DataLoader
+    model, loader: DataLoader
 ):
   model.eval()
   scores = []
@@ -170,7 +175,7 @@ def compute_metrics(
 
 def plot_roc(
     results_dir: str,
-    model: MixtureOfMaskedNetworks,
+    model,
     loader: DataLoader,
     tag_number: int = 0
 ):
