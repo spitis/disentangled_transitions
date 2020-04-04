@@ -6,3 +6,4 @@ res/*
 results/*
 models/*
 attn_mech_dir/*
+launch.sh

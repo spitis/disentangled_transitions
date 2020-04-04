@@ -122,7 +122,7 @@ if __name__ == "__main__":
   parser.add_argument('--opt_steps_per_env_step', type=int, default=1)
   parser.add_argument('--tag', type=str, default='')
   parser.add_argument('--results_dir', type=str, default='.')
-  parser.add_argument("--thresh", default=0.1, type=float, help='Threshold on attention mask')
+  parser.add_argument("--thresh", default=0.05, type=float, help='Threshold on attention mask')
   parser.add_argument("--max_cpu", default=8, type=int, help='CPUs to use')
 
   args = parser.parse_args()
@@ -208,7 +208,10 @@ if __name__ == "__main__":
       else:
         attn_mech = MixtureOfMaskedNetworks(**model_kwargs).to(device)
 
-      attn_mech.load_state_dict(torch.load(model_path))
+      if device == 'cpu':
+        attn_mech.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+      else:
+        attn_mech.load_state_dict(torch.load(model_path))
       attn_mech.to(device)
       attn_mech.eval()
 
