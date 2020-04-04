@@ -239,6 +239,7 @@ def main(argv):
   with open(os.path.join(FLAGS.results_dir, 'model_kwargs.json'), 'w') as f:
     f.write(json.dumps(model_kwargs, indent=2))
 
+  model.to('cpu')
   torch.save(model.state_dict(), os.path.join(FLAGS.results_dir, 'model.p'))
 
   log('done')

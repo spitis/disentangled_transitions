@@ -11,22 +11,23 @@
 #  --batch_size 64 \
 #  --num_runs 1 \
 #  --logtostderr
-##
+
 MODEL_TYPE=SSA
+RESULTS_DIR=/scratch/ssd001/home/creager/disentangled_transitions/attn_$MODEL_TYPE
+#RESULTS_DIR=/scratch/gobi1/creager/disentangled_transitions/attn_$MODEL_TYPE
 #MODEL_TYPE=MMN
 time python spriteworld_scm_discovery.py \
-  --num_epochs 50 \
+  --num_epochs 125 \
   --num_runs 1 \
   --num_sprites 4 \
-  --batch_size 256 \
-  --num_examples 5000 \
-  --mask_reg 2e-3 \
-  --weight_reg 1e-5 \
-  --attn_reg 3e-4 \
+  --batch_size 1000 \
+  --num_examples 50000 \
+  --mask_reg 0. \
+  --weight_reg 0. \
+  --attn_reg 0. \
   --weight_decay 0. \
-  --mask_reg 2e-3 \
   --model_type $MODEL_TYPE \
-  --results_dir /scratch/gobi1/creager/disentangled_transitions/attn_$MODEL_TYPE
+  --results_dir $RESULTS_DIR
 
 #time python coda_forward_model.py \
 #  --num_sprites 4 \
