@@ -4,6 +4,7 @@ __pycache__
 .idea/*
 res/*
 results/*
+!results/plot_results.ipynb
 models/*
 attn_mech_dir/*
 launch.sh
