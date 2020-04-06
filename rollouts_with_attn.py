@@ -60,8 +60,10 @@ if __name__ == "__main__":
                       help='Frames per second of video.')
   FLAGS = parser.parse_args()
 
-  # if no results dir specified, write movie to the attn mech dir
-  FLAGS.results_dir = FLAGS.results_dir or FLAGS.attn_mech_dir
+  # if no results dir specified, write movie to a subdir of the attn mech dir
+  FLAGS.results_dir = FLAGS.results_dir or os.path.join(
+    FLAGS.attn_mech_dir, 'rollouts_with_attn'
+  )
 
   if not os.path.exists(FLAGS.results_dir):
     os.makedirs(FLAGS.results_dir)
