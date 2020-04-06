@@ -5,19 +5,19 @@
 #  --num_runs 1 \
 ##  --logtostderr
 #
-time python dynamic_scm_discovery.py \
-  --splits 3,3,3 \
-  --num_epochs 50 \
-  --batch_size 64 \
-  --num_runs 5 \
+#time python dynamic_scm_discovery.py \
+#  --splits 3,3,3 \
+#  --num_epochs 50 \
+#  --batch_size 64 \
+#  --num_runs 5 \
 
+#################################################################################
+## train SSA attn mech
 #MODEL_TYPE=SSA
-#RESULTS_DIR=/scratch/ssd001/home/creager/disentangled_transitions/attn_$MODEL_TYPE
-##RESULTS_DIR=/scratch/gobi1/creager/disentangled_transitions/attn_$MODEL_TYPE
-##MODEL_TYPE=MMN
+#RESULTS_DIR=/scratch/gobi1/creager/disentangled_transitions/attn2_$MODEL_TYPE
 #time python spriteworld_scm_discovery.py \
 #  --num_epochs 125 \
-#  --num_runs 1 \
+#  --num_runs 5 \
 #  --num_sprites 4 \
 #  --batch_size 1000 \
 #  --num_examples 50000 \
@@ -27,6 +27,27 @@ time python dynamic_scm_discovery.py \
 #  --weight_decay 0. \
 #  --model_type $MODEL_TYPE \
 #  --results_dir $RESULTS_DIR
+#################################################################################
+
+################################################################################
+# train MMN attn mech
+MODEL_TYPE=MMN
+RESULTS_DIR=/scratch/gobi1/creager/disentangled_transitions/attn2_$MODEL_TYPE
+time python spriteworld_scm_discovery.py \
+  --num_epochs 50 \
+  --num_runs 5 \
+  --num_sprites 4 \
+  --batch_size 256 \
+  --num_examples 50000 \
+  --mask_reg 2e-3 \
+  --weight_reg 1e-5 \
+  --attn_reg 3e-4 \
+  --weight_decay 0. \
+  --mask_reg 2e-3 \
+  --model_type $MODEL_TYPE \
+  --results_dir $RESULTS_DIR
+################################################################################
+
 
 #time python coda_forward_model.py \
 #  --num_sprites 4 \
