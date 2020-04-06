@@ -180,6 +180,16 @@ def plot_roc(
 ):
   fpr, tpr, thresh, auc, acc, f1 = compute_metrics(model, loader)
 
+  with open(os.path.join(FLAGS.results_dir,
+                         'metrics_{}.p'.format(tag_number)), 'wb') as f:
+    pickle.dump(dict(fpr=list(fpr),
+                     tpr=tpr,
+                     thresh=thresh,
+                     auc=auc,
+                     acc=acc,
+                     f1=f1),
+                f)
+
   import matplotlib
   matplotlib.use('Agg')
   from matplotlib import pyplot as plt
@@ -219,7 +229,7 @@ def plot_roc(
   plt.ylabel('F1')
   plt.title('F1 as fn of mask threshold.')
   plt.legend(loc="lower right")
-  plt.savefig(os.path.join(results_dir, 'f1{}.pdf'.format(tag_number)))
+  plt.savefig(os.path.join(results_dir, 'f1_{}.pdf'.format(tag_number)))
 
 def plot_metrics(results_dir: str,
                  train_losses: list, train_aucs: list,
