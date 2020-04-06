@@ -180,7 +180,7 @@ def plot_roc(
 ):
   fpr, tpr, thresh, auc, acc, f1 = compute_metrics(model, loader)
 
-  with open(os.path.join(FLAGS.results_dir,
+  with open(os.path.join(results_dir,
                          'metrics_{}.p'.format(tag_number)), 'wb') as f:
     pickle.dump(dict(fpr=list(fpr),
                      tpr=tpr,

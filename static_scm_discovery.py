@@ -16,6 +16,9 @@ import scipy
 from sklearn import metrics
 import torch
 
+from dynamic_scm_discovery import train_attention_mechanism
+from dynamic_scm_discovery import plot_metrics
+from dynamic_scm_discovery import plot_roc
 from structured_transitions import gen_samples_static
 from structured_transitions import MaskedNetwork
 from structured_transitions import TransitionsData
@@ -81,6 +84,8 @@ def main(argv):
 
   FLAGS.splits = [int(split) for split in FLAGS.splits]
 
+
+
   for run in range(FLAGS.num_runs):
     logging.info('Run %d' % run)
     np.random.seed(FLAGS.seed + run)
@@ -99,47 +104,84 @@ def main(argv):
       te, batch_size=FLAGS.batch_size, shuffle=False, num_workers=2,
       drop_last=True)
     logging.info('Data created.')
+    valid_loader = test_loader  # TODO(creager): don't do this
 
-    # build model and optimizer
-    model = MaskedNetwork(in_features=sum(FLAGS.splits),
-                          out_features=sum(FLAGS.splits),
-                          num_hidden_layers=2, num_hidden_units=256).to(dev)
-    opt = torch.optim.Adam(model.parameters(), lr=FLAGS.lr,
-                           weight_decay=FLAGS.weight_decay)
-    pred_criterion = torch.nn.MSELoss()
-    mask_criterion = torch.nn.L1Loss()
 
-    # train
-    for epoch in range(FLAGS.num_epochs):
-      total_pred_loss, total_mask_loss = 0., 0.
-      for i, (x, y, _) in enumerate(train_loader):
-        pred_y = model(x.to(dev))
-        pred_loss = pred_criterion(y.to(dev), pred_y)
-        mask = model.mask
-        mask_loss = FLAGS.mask_reg * mask_criterion(
-          torch.log(1. + mask), torch.zeros_like(mask))
+    in_features = sum(FLAGS.splits)
+    out_features = sum(FLAGS.splits)
+    num_components = len(FLAGS.splits)  # TODO: make separate flag
+    num_hidden_layers = 2  # TODO: make command line arg
+    num_hidden_units = 256  # TODO: make command line arg
+    patience_epochs = None
+    attn_reg = 1e-3  # TODO: make proper command line arg
+    weight_reg = 1e-3  # TODO: make proper command line arg
+    mask_reg = 1e-3  # TODO: make proper command line arg
+    model, model_kwargs, train_and_valid_metrics = train_attention_mechanism(
+      train_loader,
+      valid_loader,
+      in_features,
+      out_features,
+      num_components,
+      num_hidden_layers,
+      num_hidden_units,
+      FLAGS.lr,
+      FLAGS.weight_decay,
+      mask_reg,
+      attn_reg,
+      weight_reg,
+      FLAGS.num_epochs,
+      patience_epochs,
+      tag='Run %d' % run
+    )
 
-        total_pred_loss += pred_loss
-        total_mask_loss += mask_loss
 
-        loss = pred_loss + mask_loss
-        model.zero_grad()
-        loss.backward()
-        opt.step()
+    # # build model and optimizer
+    # model = MaskedNetwork(in_features=sum(FLAGS.splits),
+    #                       out_features=sum(FLAGS.splits),
+    #                       num_hidden_layers=2, num_hidden_units=256).to(dev)
+    # opt = torch.optim.Adam(model.parameters(), lr=FLAGS.lr,
+    #                        weight_decay=FLAGS.weight_decay)
+    # pred_criterion = torch.nn.MSELoss()
+    # mask_criterion = torch.nn.L1Loss()
+    #
+    # # train
+    # for epoch in range(FLAGS.num_epochs):
+    #   total_pred_loss, total_mask_loss = 0., 0.
+    #   for i, (x, y, _) in enumerate(train_loader):
+    #     pred_y = model(x.to(dev))
+    #     pred_loss = pred_criterion(y.to(dev), pred_y)
+    #     mask = model.mask
+    #     mask_loss = FLAGS.mask_reg * mask_criterion(
+    #       torch.log(1. + mask), torch.zeros_like(mask))
+    #
+    #     total_pred_loss += pred_loss
+    #     total_mask_loss += mask_loss
+    #
+    #     loss = pred_loss + mask_loss
+    #     model.zero_grad()
+    #     loss.backward()
+    #     opt.step()
+    #
+    #   if epoch % 10 == 0:
+    #     logging.info(
+    #       'Run {} Epoch {} done! Pred loss: {:.5f}, Mask loss: {:.5f}'
+    #       .format(run, epoch, total_pred_loss / i, total_mask_loss / i)
+    #     )
 
-      if epoch % 10 == 0:
-        logging.info(
-          'Run {} Epoch {} done! Pred loss: {:.5f}, Mask loss: {:.5f}'
-          .format(run, epoch, total_pred_loss / i, total_mask_loss / i)
-        )
+    # plot train metrics
+    losses_tr, auc_tr, losses_va, auc_va = train_and_valid_metrics
+    plot_metrics(FLAGS.results_dir, losses_tr, auc_tr, losses_va, auc_va, run)
 
-    # eval
-    for tau in TAUS:
-      precision, recall = precision_recall(model, tau, FLAGS.splits)
-      results['precision'][tau].append(precision)
-      results['recall'][tau].append(recall)
+    # plot ROC
+    plot_roc(FLAGS.results_dir, model, test_loader, run)
 
-  logging.info('results:\n' + pformat(results, indent=2))
+    # # eval
+    # for tau in TAUS:
+    #   precision, recall = precision_recall(model, tau, FLAGS.splits)
+    #   results['precision'][tau].append(precision)
+    #   results['recall'][tau].append(recall)
+
+  # logging.info('results:\n' + pformat(results, indent=2))
 
   # format results as tex via pandas
   results_df = pd.DataFrame.from_dict(results)
