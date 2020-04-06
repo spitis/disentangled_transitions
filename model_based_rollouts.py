@@ -76,6 +76,10 @@ if __name__ == "__main__":
                       type=float,
                       default=1e-5,
                       help='Weight decay.')
+  parser.add_argument('--num_lstm_layers',
+                      type=int,
+                      default=1,
+                      help='Num LSTM layers.')
 
   FLAGS = parser.parse_args()
   if not os.path.exists(FLAGS.results_dir):
@@ -142,6 +146,7 @@ if __name__ == "__main__":
   elif FLAGS.model_type == 'lstm':
     model = LSTMModelBasedSelectBounce(tr_loader,
                                        va_loader,
+                                       num_layers=FLAGS.num_lstm_layers,
                                        lr=FLAGS.lr,
                                        num_epochs=FLAGS.num_epochs,
                                        patience_epochs=FLAGS.patience_epochs,

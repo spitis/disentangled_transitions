@@ -289,7 +289,6 @@ class NeuralModelBasedSelectBounce(SeededSelectBounce):
 class LSTMModelBasedSelectBounce(SeededSelectBounce):
   """Swaps spriteworld environment dynamics with LSTM learned from data."""
   EVAL_EVERY = 5  # TODO(): make this a command line arugment?
-  NUM_LAYERS = 1  # TODO(): make this a command line arugment?
   BIAS = True  # TODO(): make this a command line arugment?
   BATCH_FIRST = True  # TODO(): make this a command line arugment?
   DROPOUT = 0.  # TODO(): make this a command line arugment?
@@ -299,6 +298,7 @@ class LSTMModelBasedSelectBounce(SeededSelectBounce):
   def __init__(self,
                train_loader: torch.utils.data.DataLoader,
                valid_loader: torch.utils.data.DataLoader,
+               num_layers: int,
                lr: float,
                num_epochs: int,
                patience_epochs: int,
@@ -319,7 +319,7 @@ class LSTMModelBasedSelectBounce(SeededSelectBounce):
     model = torch.nn.LSTM(
       input_size=num_state_features+num_action_features,
       hidden_size=num_state_features,
-      num_layers=self.NUM_LAYERS,
+      num_layers=num_layers,
       bias=self.BIAS,
       batch_first=self.BATCH_FIRST,
       dropout=self.DROPOUT,
