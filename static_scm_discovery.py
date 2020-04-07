@@ -94,28 +94,56 @@ def main(argv):
     fns, samples = gen_samples_static(
       num_seqs=FLAGS.num_seqs, seq_len=FLAGS.seq_len, splits=FLAGS.splits)
     dataset = TransitionsData(samples)
-    tr = TransitionsData(dataset[:int(len(dataset)*5/6)])
+    tr = TransitionsData(dataset[:int(len(dataset)*4/6)])
+    va = TransitionsData(dataset[int(len(dataset)*4/6):int(len(dataset)*5/6)])
     te = TransitionsData(dataset[int(len(dataset)*5/6):])
 
     train_loader = torch.utils.data.DataLoader(
       tr, batch_size=FLAGS.batch_size, shuffle=True, num_workers=2,
       drop_last=True)
+    valid_loader = torch.utils.data.DataLoader(
+      va, batch_size=FLAGS.batch_size, shuffle=True, num_workers=2,
+      drop_last=True)
     test_loader = torch.utils.data.DataLoader(
       te, batch_size=FLAGS.batch_size, shuffle=False, num_workers=2,
       drop_last=True)
     logging.info('Data created.')
-    valid_loader = test_loader  # TODO(creager): don't do this
 
 
-    in_features = sum(FLAGS.splits)
-    out_features = sum(FLAGS.splits)
-    num_components = len(FLAGS.splits)  # TODO: make separate flag
+
+    num_action_features = 0
+    num_state_features = sum(FLAGS.splits)
+    num_sprites = len(FLAGS.splits)  # really num_subspaces
+    if FLAGS.model_type == 'MMN':
+      in_features = num_state_features + num_action_features
+      out_features = num_state_features
+      num_components = num_sprites  # TODO: make separate flag
+      num_hidden_units = 256  # TODO: make command line arg
+      attn_reg = 1e-3  # TODO: make proper command line arg
+      weight_reg = 1e-3  # TODO: make proper command line arg
+      mask_reg = 1e-3  # TODO: make proper command line arg
+    elif FLAGS.model_type == 'SSA':
+      in_features = 4
+      out_features = 4
+      num_components = 2  # TODO: make separate flag
+      num_hidden_units = 512  # TODO: make command line arg
+      attn_reg = 0.  # TODO: make proper command line arg
+      weight_reg = 0.  # TODO: make proper command line arg
+      mask_reg = 0.  # TODO: make proper command line arg
+    else:
+      msg = 'Unsupported model type. Got %s. Expected MMN or SSA.' % \
+            FLAGS.model_type
+      raise ValueError(msg)
+
+    # in_features = sum(FLAGS.splits)
+    # out_features = sum(FLAGS.splits)
+    # num_components = len(FLAGS.splits)  # TODO: make separate flag
     num_hidden_layers = 2  # TODO: make command line arg
-    num_hidden_units = 256  # TODO: make command line arg
+    # num_hidden_units = 256  # TODO: make command line arg
     patience_epochs = None
-    attn_reg = 1e-3  # TODO: make proper command line arg
-    weight_reg = 1e-3  # TODO: make proper command line arg
-    mask_reg = 1e-3  # TODO: make proper command line arg
+    # attn_reg = 1e-3  # TODO: make proper command line arg
+    # weight_reg = 1e-3  # TODO: make proper command line arg
+    # mask_reg = 1e-3  # TODO: make proper command line arg
     model, model_kwargs, train_and_valid_metrics = train_attention_mechanism(
       train_loader,
       valid_loader,
@@ -228,6 +256,7 @@ if __name__ == "__main__":
   flags.DEFINE_integer('num_epochs', 100, 'Number of epochs of training.')
   flags.DEFINE_list('splits', [4, 3, 2], 'Dimensions per state factor.')
   flags.DEFINE_boolean('verbose', False, 'If True, prints log info to std out.')
+  flags.DEFINE_string('model_type', 'MMN', 'Type of attn mech.')
   flags.DEFINE_string(
     'results_dir', '/tmp/static_scm_discovery', 'Output directory.')
 

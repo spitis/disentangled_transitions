@@ -115,12 +115,6 @@ def train_attention_mechanism(
           weight_loss += mask_criterion(param, torch.zeros_like(param))
         weight_loss *= weight_reg
 
-        # TODO: remove
-        # total_pred_loss += pred_loss
-        # total_mask_loss += mask_loss
-        # total_attn_loss += attn_loss
-        # total_weight_loss += weight_loss
-
         valid_loss += pred_loss + mask_loss + attn_loss + weight_loss
       valid_loss /= len(valid_loader)
       valid_loss = valid_loss.detach().item()
@@ -303,16 +297,19 @@ def main(argv):
     log('Total global interactions: {}/{}'
         .format(global_interactions, len(samples[0])))
     dataset = TransitionsData(samples)
-    tr = TransitionsData(dataset[:int(len(dataset) * 5 / 6)])
-    te = TransitionsData(dataset[int(len(dataset) * 5 / 6):])
+    tr = TransitionsData(dataset[:int(len(dataset)*4/6)])
+    va = TransitionsData(dataset[int(len(dataset)*4/6):int(len(dataset)*5/6)])
+    te = TransitionsData(dataset[int(len(dataset)*5/6):])
 
     train_loader = torch.utils.data.DataLoader(tr, batch_size=FLAGS.batch_size,
+                                               shuffle=True, num_workers=2,
+                                               drop_last=True)
+    valid_loader = torch.utils.data.DataLoader(va, batch_size=FLAGS.batch_size,
                                                shuffle=True, num_workers=2,
                                                drop_last=True)
     test_loader = torch.utils.data.DataLoader(te, batch_size=FLAGS.batch_size,
                                               shuffle=False, num_workers=2,
                                               drop_last=True)
-    valid_loader = test_loader  # TODO(creager): don't do this
 
     # train
     in_features = sum(FLAGS.splits)

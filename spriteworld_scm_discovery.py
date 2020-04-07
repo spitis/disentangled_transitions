@@ -110,16 +110,19 @@ def main(argv):
     samples = (x, y, m)
 
     dataset = TransitionsData(samples)
-    tr = TransitionsData(dataset[:int(len(dataset) * 5 / 6)])
-    te = TransitionsData(dataset[int(len(dataset) * 5 / 6):])
+    tr = TransitionsData(dataset[:int(len(dataset)*4/6)])
+    va = TransitionsData(dataset[int(len(dataset)*4/6):int(len(dataset)*5/6)])
+    te = TransitionsData(dataset[int(len(dataset)*5/6):])
 
     train_loader = torch.utils.data.DataLoader(tr, batch_size=FLAGS.batch_size,
                                                shuffle=True, num_workers=2,
                                                drop_last=True)
+    valid_loader = torch.utils.data.DataLoader(va, batch_size=FLAGS.batch_size,
+                                               shuffle=False, num_workers=2,
+                                               drop_last=True)
     test_loader = torch.utils.data.DataLoader(te, batch_size=FLAGS.batch_size,
                                               shuffle=False, num_workers=2,
                                               drop_last=True)
-    valid_loader = test_loader  # TODO(creager): don't do this
 
     # train
     num_action_features = 2
@@ -183,8 +186,6 @@ def main(argv):
             predicted_sparsity.ravel()
         )
       )
-      # TODO(creager): measure validation accuracy per tau and save best
-      #  threshold according to that metric.
 
     # plot train metrics
     plot_metrics(FLAGS.results_dir, losses_tr, auc_tr, losses_va, auc_va, seed)
