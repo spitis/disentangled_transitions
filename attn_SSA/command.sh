@@ -1,1 +1,0 @@
-python spriteworld_scm_discovery.py --num_epochs 60 --num_runs 1 --num_sprites 4 --batch_size 1000 --num_examples 50000 --mask_reg 0. --weight_reg 0. --attn_reg 0. --weight_decay 0. --model_type SSA --results_dir attn_SSA

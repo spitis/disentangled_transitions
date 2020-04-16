@@ -121,7 +121,7 @@ if __name__ == "__main__":
   parser.add_argument('--coda_samples_per_pair', type=int, default=5, help='Number of relabels per transition pairs.')
   parser.add_argument('--opt_steps_per_env_step', type=int, default=1)
   parser.add_argument('--tag', type=str, default='')
-  parser.add_argument('--results_dir', type=str, default='.')
+  parser.add_argument('--results_dir', type=str, default='results')
   parser.add_argument("--thresh", default=0.05, type=float, help='Threshold on attention mask')
   parser.add_argument("--max_cpu", default=8, type=int, help='CPUs to use')
 
@@ -174,7 +174,7 @@ if __name__ == "__main__":
 
   if args.load_model != "":
     policy_file = file_name if args.load_model == "default" else args.load_model
-    policy.load(f"./models/{policy_file}")
+    policy.load(f"{args.results_dir}/models/{policy_file}")
 
   replay_buffer = utils.ReplayBuffer(state_dim, action_dim)
   coda_buffer = utils.ReplayBuffer(state_dim, action_dim, max_size=int(4e6))

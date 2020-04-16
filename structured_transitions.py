@@ -118,7 +118,7 @@ class SimpleAttn(nn.Module):
     return output, mask
   
 class SimpleStackedAttn(nn.Module):
-  def __init__(self, in_features, out_features, num_components=2, num_hidden_layers=2, num_hidden_units=256):
+  def __init__(self, in_features, out_features, num_components=2, num_hidden_layers=2, num_hidden_units=256, action_dim=2):
     """
     Arg names chosen to match MixtureOfMaskNetworks, so this can be dropped in
     """
@@ -126,13 +126,14 @@ class SimpleStackedAttn(nn.Module):
 
     super().__init__()
     blocks = [SimpleAttn(
-      (in_features,) + (num_hidden_units,)*num_hidden_layers, (in_features,) + (num_hidden_units,)*num_hidden_layers)]
+      (in_features + action_dim,) + (num_hidden_units,)*num_hidden_layers, (in_features + action_dim,) + (num_hidden_units,)*num_hidden_layers)]
     for block in range(num_blocks-1):
       blocks.append(SimpleAttn((num_hidden_units,)*(1 + num_hidden_layers),(num_hidden_units,)*(1 + num_hidden_layers)))
     output_projection = nn.Linear(num_hidden_units, out_features)
     self.f = nn.Sequential(*blocks, output_projection)
 
     self.in_features = in_features
+    self.action_dim = action_dim
     self.num_state_slots = None
     
   def forward(self, x):
@@ -143,9 +144,21 @@ class SimpleStackedAttn(nn.Module):
 
     # Automatically reshape x into slots
     x_dim = x.shape[-1]
-    num_slots, action_dim = x_dim // self.in_features, x_dim % self.in_features
-    x = torch.cat((  x, torch.zeros((x.shape[0], self.in_features - action_dim), device=x.device)  ), 1)
-    x = x.reshape(x.shape[0], num_slots + 1, self.in_features)
+
+    num_slots = (x_dim - self.action_dim) // self.in_features
+    
+    state_feats, action_feats = torch.split(x, [x_dim - self.action_dim, self.action_dim], dim=1)
+    
+    state_feats = state_feats.reshape(x.shape[0], num_slots, self.in_features)
+    state_feats = torch.cat( (state_feats, torch.zeros((x.shape[0], num_slots, self.action_dim), device=x.device) ), 2)
+    
+    action_feats = action_feats.reshape(x.shape[0], 1, self.action_dim)
+    action_feats = torch.cat( (action_feats, torch.zeros((x.shape[0], 1, self.in_features), device=x.device) ), 2)
+    
+    x = torch.cat( (state_feats, action_feats), 1) # batch_size, num_slots + 1, in_features + action_features
+
+    #x = torch.cat((  x, torch.zeros((x.shape[0], self.in_features - self.action_dim), device=x.device)  ), 1)
+    #x = x.reshape(x.shape[0], num_slots + 1, self.in_features + self.action_dim)
 
     mask = torch.eye(x.size(1), device=x.device)[None].repeat(x.size(0), 1, 1)
     # masks = [mask]
