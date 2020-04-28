@@ -86,12 +86,6 @@ class FlatEnvWrapper(gym.ObservationWrapper):
     return observation['disentangled'].flatten()
 
 
-class SymmetricActionWrapper(gym.ActionWrapper):
-  """Turns transforms action from (-1, 1) to (0, 1)."""
-  def action(self, action):
-    return (action + 1.) / 2.
-
-
 if __name__ == "__main__":
 
   parser = argparse.ArgumentParser()
@@ -142,7 +136,7 @@ if __name__ == "__main__":
   config, original_env = make_env(
     num_sprites=args.num_sprites, reward_type=args.reward_type)
   _, env = make_env(num_sprites=args.num_sprites, reward_type=args.reward_type)
-  env = SymmetricActionWrapper(FlatEnvWrapper(env))
+  env = FlatEnvWrapper(env)
   state_to_sprites = SpriteMaker()
 
   # Set seeds

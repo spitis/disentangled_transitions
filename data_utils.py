@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from colour import Color
 from enum import Enum
+import gym
 
 import os, sys
 sys.path.append(os.path.dirname('spritelu/'))
@@ -13,6 +14,18 @@ from spriteworld import sprite_generators
 from spriteworld import gym_wrapper as gymw
 from dynamics_models import SeededSelectBounce, SeededSelectRedirect
 from scipy.spatial.distance import pdist as pairwise_distance, squareform
+
+
+class FlatEnvWrapper(gym.ObservationWrapper):
+  """Flattens the environment observations so that only the disentangled observation is returned."""
+  def observation(self, observation):
+    return observation['disentangled'].flatten()
+
+
+class SymmetricActionWrapper(gym.ActionWrapper):
+  """Turns transforms action from (-1, 1) to (0, 1)."""
+  def action(self, action):
+    return (action + 1.) / 2.
 
 class PairwiseDistanceSprites(tasks.AbstractTask):
   """Task is to min/max a function of pairwise distance between all the sprites"""
@@ -166,6 +179,10 @@ def make_env(num_sprites = 4, action_space = None, seed = 0,
 
   env = environment.Environment(**config)
   env = gymw.GymWrapper(env)
+  assert(np.all(env.action_space.high == 1))
+  assert(np.all(env.action_space.low == 0))
+  env = SymmetricActionWrapper(env)
+  env.action_space.low = -env.action_space.high
   env.action_space.seed(seed)  # reproduce randomness in action space
   return config, env
   
