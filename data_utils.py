@@ -12,15 +12,17 @@ from spriteworld import environment, renderers, tasks
 from spriteworld import factor_distributions as distribs
 from spriteworld import sprite_generators
 from spriteworld import gym_wrapper as gymw
-from dynamics_models import SeededSelectBounce, SeededSelectRedirect
+from coda.dynamics_models import SeededSelectBounce, SeededSelectRedirect
 from scipy.spatial.distance import pdist as pairwise_distance, squareform
-
 
 class FlatEnvWrapper(gym.ObservationWrapper):
   """Flattens the environment observations so that only the disentangled observation is returned."""
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.observation_space = self.observation_space['disentangled']
+    
   def observation(self, observation):
     return observation['disentangled'].flatten()
-
 
 class SymmetricActionWrapper(gym.ActionWrapper):
   """Turns transforms action from (-1, 1) to (0, 1)."""
@@ -101,7 +103,7 @@ class TargetGoalPos(tasks.AbstractTask):
 
 
 def make_env(num_sprites = 4, action_space = None, seed = 0,
-  max_episode_length=5000, imagedim=16, reward_type='min_pairwise'):
+  max_episode_length=50, imagedim=16, reward_type='min_pairwise'):
 
   # build factors
   factors = distribs.Product([

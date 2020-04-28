@@ -7,17 +7,17 @@ import argparse
 import json
 import os
 import pickle
-from data_utils import make_env, SpriteMaker
 from functools import partial
 import time
 
-from agents import utils
-from agents import TD3
-from agents import DDPG
+from coda.agents import utils
+from coda.agents import TD3
+from coda.agents import DDPG
 
-from coda import get_true_abstract_mask, get_true_flat_mask, get_random_flat_mask, get_fully_connected_mask
-from coda import enlarge_dataset
-from structured_transitions import MixtureOfMaskedNetworks, SimpleStackedAttn
+from coda.data_utils import make_env, SpriteMaker, FlatEnvWrapper
+from coda.coda import get_true_abstract_mask, get_true_flat_mask, get_random_flat_mask, get_fully_connected_mask
+from coda.coda import enlarge_dataset
+from coda.structured_transitions import MixtureOfMaskedNetworks, SimpleStackedAttn
 
 """ MULTIPROCESSING STUFF """
 import torch.multiprocessing as mp
@@ -61,7 +61,7 @@ def model_get_mask(sprites, config, action, MODEL, THRESH):
 def eval_policy(policy, seed, num_sprites, eval_episodes=50, episode_len=100,
                 reward_type='min_pairwise'):
   _, eval_env = make_env(num_sprites=num_sprites, reward_type=reward_type)
-  eval_env = SymmetricActionWrapper(FlatEnvWrapper(eval_env))  
+  eval_env = FlatEnvWrapper(eval_env)
   eval_env.seed(seed + 100)
 
   avg_reward = 0.
@@ -78,13 +78,6 @@ def eval_policy(policy, seed, num_sprites, eval_episodes=50, episode_len=100,
       
   avg_reward /= (eval_episodes * episode_len)
   return avg_reward
-
-
-class FlatEnvWrapper(gym.ObservationWrapper):
-  """Flattens the environment observations so that only the disentangled observation is returned."""
-  def observation(self, observation):
-    return observation['disentangled'].flatten()
-
 
 if __name__ == "__main__":
 
@@ -175,7 +168,8 @@ if __name__ == "__main__":
 
   eval_episodes = 50
   # Evaluate untrained policy
-  evaluations = [eval_policy(policy, args.seed, args.num_sprites, eval_episodes=eval_episodes, reward_type=args.reward_type)]
+  evaluations = [eval_policy(policy, args.seed, args.num_sprites, eval_episodes=eval_episodes, 
+                  episode_len=args.episode_len, reward_type=args.reward_type)]
   TIME = time.time()
   print(f"Time 0 -- Evaluation over {eval_episodes} episodes: {evaluations[-1]:.3f} --- coda_buffer length: {len(coda_buffer)}")
 
@@ -313,7 +307,8 @@ if __name__ == "__main__":
 
     # Evaluate episode
     if (t + 1) % args.eval_freq == 0:
-      evaluations.append(eval_policy(policy, args.seed, args.num_sprites, eval_episodes=eval_episodes, reward_type=args.reward_type))
+      evaluations.append(eval_policy(policy, args.seed, args.num_sprites, eval_episodes=eval_episodes, 
+                  episode_len=args.episode_len, reward_type=args.reward_type))
       print(f"Time {t+1} -- Evaluation over {eval_episodes} episodes: {evaluations[-1]:.3f} --- coda_buffer length: {len(coda_buffer)}  ---- time: {time.time() - TIME}s")
       TIME = time.time()
       np.save(f"{args.results_dir}/results/{file_name}", evaluations)
