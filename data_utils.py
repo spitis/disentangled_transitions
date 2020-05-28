@@ -80,6 +80,21 @@ class TargetGoalPos(tasks.AbstractTask):
     poses = np.array([s.position for s in sprites])
     return self.positions_to_reward(poses)
     
+  def batch_reward_of_vector_repr(self, state_vector):
+    """Computes reward on a 'VectorizedPositionsAndVelocities' format"""
+    poses = state_vector.reshape(-1, 4, 4)[:, :,:2]
+    return self.batch_positions_to_reward(poses)
+  
+  def batch_positions_to_reward(self, poses):
+    dists = np.linalg.norm(poses - self.targets, axis=2)
+    dists[:,:4-self.N] = 0
+    if self.mode == PlaceRewardType.SPARSE:
+      return float(np.all(dists < self.eps, axis=-1, keepdims=True))
+    elif self.mode == PlaceRewardType.PARTIAL:
+      return ((dists < self.eps).sum(-1, keepdims=True) - (4. - self.N)) / self.N
+    elif self.mode == PlaceRewardType.DENSE:
+      raise NotImplementedError
+    
   def reward_of_vector_repr(self, state_vector):
     """Computes reward on a 'VectorizedPositionsAndVelocities' format"""
     poses = state_vector.reshape(-1, 4)[:,:2]
