@@ -222,7 +222,11 @@ def create_factorized_dataset(env, num_transitions=20000, reset_prob=0.05,
   data = []
   sprites = []
   s1 = env.reset()
-  sprites1 = copy.deepcopy(env._env.state()['sprites'])
+  if hasattr(env, '_env'):
+    _env = env._env
+  else:
+    _env = env.env._env
+  sprites1 = copy.deepcopy(_env.state()['sprites'])
   i = 1
   while len(data) < num_transitions:
     i += 1
@@ -235,11 +239,11 @@ def create_factorized_dataset(env, num_transitions=20000, reset_prob=0.05,
     sprites.append(sprites1)
 
     s1 = s2
-    sprites1 = copy.deepcopy(env._env.state()['sprites'])
+    sprites1 = copy.deepcopy(_env.state()['sprites'])
 
     if np.random.random() < reset_prob:
       s1 = env.reset()
-      sprites1 = copy.deepcopy(env._env.state()['sprites'])
+      sprites1 = copy.deepcopy(_env.state()['sprites'])
   return data, sprites
 
 
